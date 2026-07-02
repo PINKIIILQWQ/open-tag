@@ -10,6 +10,9 @@
 // The parse functions are pure (unit-tested against fixtures captured from multica's discovery
 // research) and mirror multica's server/pkg/agent/models.go field-for-field.
 import { spawn, type ChildProcess } from "node:child_process";
+import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
+import { homedir } from "node:os";
+import path from "node:path";
 
 export interface ThinkingLevel { value: string; label: string; description?: string }
 export interface ModelThinking { levels: ThinkingLevel[]; default?: string }
@@ -160,6 +163,79 @@ function isPiNoise(line: string): boolean {
   return l.includes("no models match pattern") || l.startsWith("warning:") || l.startsWith("error:") || l.startsWith("info:");
 }
 
+const HERMES_PROFILE_PRIORITY: Record<string, number> = {
+  "codex-spark": 0,
+  qoder: 1,
+  codex: 2,
+  gemini: 3,
+  "agentkb-librarian": 4,
+  xiaos: 9,
+};
+
+function labelFromId(id: string): string {
+  return id.split(/[-_]/).filter(Boolean).map(titleCase).join(" ") || id;
+}
+
+function firstYamlString(text: string, keys: string[]): string | null {
+  for (const key of keys) {
+    const re = new RegExp(`^${key}:\\s*["']?([^"'\\n#]+)`, "m");
+    const m = re.exec(text);
+    if (m?.[1]?.trim()) return m[1].trim();
+  }
+  return null;
+}
+
+function hermesProfileLabel(dir: string, id: string): string {
+  for (const filename of ["profile.yaml", "config.yaml"]) {
+    const file = path.join(dir, filename);
+    if (!existsSync(file)) continue;
+    try {
+      const text = readFileSync(file, "utf8").slice(0, 4096);
+      const label = firstYamlString(text, ["display_name", "displayName", "name", "title"]);
+      if (label) return label;
+    } catch {
+      // Fall through to id-derived label.
+    }
+  }
+  return labelFromId(id);
+}
+
+function isHermesProfileDir(dir: string): boolean {
+  return ["profile.yaml", "SOUL.md", "config.yaml"].some((name) => existsSync(path.join(dir, name)));
+}
+
+export function discoverHermesProfilesFromRoots(roots: string[]): DiscoveredModel[] {
+  const found = new Map<string, DiscoveredModel>();
+  for (const root of roots) {
+    if (!root || !existsSync(root)) continue;
+    let entries: string[];
+    try { entries = readdirSync(root); } catch { continue; }
+    for (const entry of entries) {
+      const dir = path.join(root, entry);
+      try { if (!statSync(dir).isDirectory()) continue; } catch { continue; }
+      if (!isHermesProfileDir(dir)) continue;
+      if (!isModelId(entry)) continue;
+      if (!found.has(entry)) found.set(entry, { id: entry, label: hermesProfileLabel(dir, entry), provider: "hermes", default: entry === "codex-spark" });
+    }
+  }
+  return [...found.values()].sort((a, b) => {
+    const pa = HERMES_PROFILE_PRIORITY[a.id] ?? 50;
+    const pb = HERMES_PROFILE_PRIORITY[b.id] ?? 50;
+    if (pa !== pb) return pa - pb;
+    return a.id.localeCompare(b.id);
+  });
+}
+
+function discoverHermesProfiles(): DiscoveredModel[] {
+  const home = homedir();
+  const roots = [
+    process.env.HERMES_PROFILE_DIR,
+    path.join(home, ".agentkb", "local", "hermes-profiles"),
+    path.join(home, ".hermes", "profiles"),
+  ].filter((v): v is string => !!v);
+  return discoverHermesProfilesFromRoots(roots);
+}
+
 // ── shelling out (not unit-tested — covered by the live E2E run) ──
 
 const LIST_TIMEOUT_MS = 7_000; // a single probe must stay under runtimeModels' 8s WS-RPC budget, else the server gives up while the daemon keeps spawning
@@ -225,6 +301,10 @@ export async function listModels(runtime: string): Promise<DiscoveredModel[] | n
       const r = await runList("codex", ["debug", "models"]);
       const models = parseCodexModels(r.stdout);
       return models.length ? models : null;
+    }
+    case "hermes": {
+      const profiles = discoverHermesProfiles();
+      return profiles.length ? profiles : null;
     }
     default:
       return null;
