@@ -527,8 +527,12 @@ aside.traj-col h2{position:relative;font-size:12px;font-weight:600;letter-spacin
 /* Message row craft (skin: DESIGN.md editorial style) */
 .msg-col{flex:1;min-width:0}
 .msg-head{display:flex;align-items:baseline;gap:7px;min-width:0}
+.msg-head .ts{margin-left:0;flex:none}
 .member-badge{font-size:12px;color:var(--muted-soft);font-weight:400;flex:none}
-.msg-role{font-size:13px;color:var(--muted-soft);font-weight:400;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0;flex:0 1 auto}
+.msg-subhead{display:flex;align-items:center;gap:7px;min-width:0;margin-top:2px;color:var(--muted-soft)}
+.msg-subhead + .mbody{margin-top:6px}
+.msg-activity{flex:none;font-family:ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,"Liberation Mono",monospace;font-size:11px;line-height:1.35;color:var(--muted);background:rgba(240,239,237,.4);border:0;border-radius:5px;padding:1px 5px;white-space:nowrap}
+.msg-role{font-size:13px;color:var(--muted-soft);font-weight:400;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0;flex:1 1 auto}
 .av-status{position:absolute;bottom:-1px;right:-1px;width:10px;height:10px;border-radius:50%;border:2px solid var(--surface);background:var(--muted-soft)}
 .av-status.online,.av-status.active{background:var(--success)} .av-status.working,.av-status.thinking{background:var(--amber)}
 .msg-meta{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-top:5px}
