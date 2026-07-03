@@ -293,6 +293,21 @@ export function Chat() {
   const taskAssignee = (m: Msg) => { if (!m.taskAssigneeId) return ""; const a = agents.find((x) => x.id === m.taskAssigneeId); if (a) return " @" + (a.displayName || a.name); const h = humans.find((x) => x.userId === m.taskAssigneeId); return h ? " @" + (h.displayName || h.name) : ""; };
   // Handles task status change / claim from the task badge; socket message:updated event refreshes the message automatically
   const doTask = async (m: Msg, action: string, body?: unknown) => { try { await api("PATCH", `/api/tasks/${m.id}/${action}`, body); } catch { /* will self-correct on next reload */ } };
+  const agentLiveState = (a?: (typeof agents)[number]) => {
+    if (!a) return "offline";
+    const activity = a.activity && a.activity !== "offline" ? a.activity : "";
+    const status = a.status && a.status !== "offline" ? a.status : "";
+    return activity || status || "offline";
+  };
+  const agentActivityText = (a?: (typeof agents)[number]) => {
+    const detail = a?.activityDetail?.trim();
+    if (detail) return detail;
+    if (a?.activity === "working") return t("liveBar.working");
+    if (a?.activity === "thinking") return t("liveBar.thinking");
+    if (a?.activity && a.activity !== "offline") return a.activity;
+    if (a?.status && a.status !== "offline") return a.status;
+    return "";
+  };
   // Routes inline token clicks (@mention / #channel / thread / task #N) inside MessageContent
   const navToken = async (type: string, args: string[]) => {
     if (type === "agent") return setProfile({ type: "agent", id: args[0]! });
@@ -339,6 +354,8 @@ export function Chat() {
               {loaded && !loadError && !msgs.length && <PaneEmpty icon={<MessageCircle size={30} />} title={t("chat.channelEmpty")} />}
               {!loadError && msgs.map((m) => {
                 const ag = m.senderType === "agent" && m.senderId ? agents.find((a) => a.id === m.senderId) : undefined; // used for role description and avatar status dot
+                const agLive = agentLiveState(ag);
+                const agActivity = agentActivityText(ag);
                 const tm = threadMeta[m.id];
                 const isMember = m.senderType !== "agent" && m.senderType !== "system"; // human/user senders get a "member" badge
                 // action card (agent proposal card) → rendered by dedicated ActionCardMsg component
@@ -363,7 +380,7 @@ export function Chat() {
                   {ag
                     ? <span className="msg-av clickable" onClick={() => setProfile({ type: "agent", id: m.senderId! })}
                         onMouseEnter={(e) => setHoverAgent({ id: m.senderId!, x: e.currentTarget.getBoundingClientRect().right + 8, y: e.currentTarget.getBoundingClientRect().top })}
-                        onMouseLeave={() => setHoverAgent(null)}><Avatar seed={m.senderName} url={senderAvatar(m)} size={36} />{ag.activity && ag.activity !== "offline" && <span className={"av-status " + ag.activity} />}</span>
+                        onMouseLeave={() => setHoverAgent(null)}><Avatar seed={m.senderName} url={senderAvatar(m)} size={36} />{agLive !== "offline" && <span className={"av-status " + agLive} />}</span>
                     : m.senderId
                       ? <span className="msg-av clickable" onClick={() => setProfile({ type: "human", id: m.senderId! })}><Avatar seed={m.senderName} url={senderAvatar(m)} size={36} /></span>
                       : <Avatar seed={m.senderName} url={senderAvatar(m)} size={36} />}
@@ -376,8 +393,12 @@ export function Chat() {
                         : m.senderId
                           ? <span className="who clickable" onClick={() => setProfile({ type: "human", id: m.senderId! })}>{m.senderName}</span>
                           : <span className="who">{m.senderName}</span>}
-                      {ag?.description ? <span className="msg-role">{ag.description}</span> : isMember ? <span className="member-badge">member</span> : null}
                       <span className="ts">{fmtTime(m.createdAt)}</span></div>
+                    {ag && (agActivity || ag.description) ? <div className="msg-subhead">
+                      {agActivity ? <code className={"msg-activity " + agLive}>{agActivity}</code> : null}
+                      {ag.description ? <span className="msg-role">{ag.description}</span> : null}
+                    </div> : null}
+                    {isMember ? <div className="msg-subhead"><span className="member-badge">member</span></div> : null}
                     {!!m.content && <div className="mbody"><MessageContent content={m.content} mentions={m.mentions || []} channels={channels} nav={navToken} /></div>}
                     {!!m.attachments?.length && <div className="msg-atts">{m.attachments.map((a) => <AttCard key={a.id} a={a} url={attachmentUrl(a.id)} />)}</div>}
                     {/* persistent meta row: task badge + thread button + reactions all on the same line (reactions no longer occupy a separate row) */}
