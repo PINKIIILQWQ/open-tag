@@ -82,6 +82,15 @@ test("chat Markdown styles cover rich GFM elements beyond paragraphs and code", 
   assertDecl(".mention", "text-decoration", "none");
   assertDecl(".mbody .ref-chan", "background", "var\\(--channel-mention\\)");
   assertDecl(".mbody .ref-chan", "color", "var\\(--ink-2\\)");
+  assertDecl(".mbody .ref-chan", "text-decoration", "none");
+  assertDecl(".mbody .ref-thread", "background", "var\\(--thread-mention\\)");
+  assertDecl(".mbody .ref-thread", "color", "var\\(--ink-2\\)");
+  assertDecl(".mbody .ref-thread", "text-decoration", "none");
+  assertDecl(".mbody .ref-task", "background", "var\\(--task-mention\\)");
+  assertDecl(".mbody .ref-task", "color", "var\\(--ink-2\\)");
+  assertDecl(".mbody .ref-task", "text-decoration", "none");
+  assertDecl(".mbody .ref-thread:hover", "background", "var\\(--thread-mention-strong\\)");
+  assertDecl(".mbody .ref-task:hover", "background", "var\\(--task-mention-strong\\)");
 });
 
 test("Workspace Markdown preview keeps parity with chat for rich GFM elements", () => {
