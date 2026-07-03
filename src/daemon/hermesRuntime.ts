@@ -5,12 +5,14 @@
 // agent workspace. This keeps secrets in Hermes config, not in the OpenTag database.
 import { spawn, type ChildProcess } from "node:child_process";
 import { existsSync } from "node:fs";
-import { homedir } from "node:os";
+import { readFile, unlink } from "node:fs/promises";
+import { homedir, tmpdir } from "node:os";
 import path from "node:path";
 import type { Runtime, StartOpts, RuntimeCallbacks, RuntimeSession } from "./runtime.js";
 
 const MAX = 4000;
 const clip = (s: unknown) => String(s ?? "").slice(0, MAX);
+const FINAL_RESPONSE_MAX = 2400;
 
 export function hermesProfile(model: string | undefined, runtimeConfig: Record<string, unknown> | null | undefined): string {
   const configured = runtimeConfig?.profile;
@@ -41,6 +43,10 @@ export function buildHermesArgs(prompt: string, sessionId?: string | null): stri
   return args;
 }
 
+interface TurnState { sent: boolean; held: boolean; engaged: boolean; target: string | null; }
+type BridgeDecision = { ok: true; target: string; content: string } | { ok: false; reason: string };
+interface BridgePostResult { ok: boolean; held?: boolean; sentDraft?: boolean; status?: number }
+
 export function parseHermesSessionId(stderr: string): string | null {
   const matches = [...stderr.matchAll(/^session_id:\s*(\S+)\s*$/gm)];
   return matches.length ? matches[matches.length - 1]![1]! : null;
@@ -48,6 +54,75 @@ export function parseHermesSessionId(stderr: string): string | null {
 
 function isMissingHermesSession(stderr: string): boolean {
   return /Session not found:/i.test(stderr);
+}
+
+export function parseHermesTurnEvents(jsonl: string): TurnState {
+  const state: TurnState = { sent: false, held: false, engaged: false, target: null };
+  for (const line of jsonl.split("\n")) {
+    if (!line.trim()) continue;
+    let evt: any;
+    try { evt = JSON.parse(line); } catch { continue; }
+    if (evt.type === "send") state.sent = true;
+    if (evt.type === "held") state.held = true;
+    if ((evt.type === "check" || evt.type === "read") && typeof evt.target === "string" && evt.target.trim()) {
+      state.engaged = true;
+      state.target = evt.target.trim();
+    }
+  }
+  return state;
+}
+
+function cleanHermesStdout(stdout: string): BridgeDecision {
+  let lines = stdout.trim().split(/\r?\n/).map((line) => line.trimEnd());
+  while (lines.length && !lines[0]!.trim()) lines.shift();
+  while (lines.length && /^(⚠|Warning:)/.test(lines[0]!.trim())) lines.shift();
+  while (lines.length && !lines[0]!.trim()) lines.shift();
+  const content = lines.join("\n").trim();
+  if (!content) return { ok: false, reason: "empty-stdout" };
+  if (/^(No new messages\.|Sent to |Freshness hold:)/.test(content)) return { ok: false, reason: "cli-output" };
+  if (/^(Error:|Code:|Exception:|Traceback\b|Unhandled\b)/i.test(content)) return { ok: false, reason: "error-output" };
+  if (/^(┊|diff --git\b|@@\s+-|\+\+\+ |--- )/m.test(content) || /\na\/.+\s+→\s+b\/.+/.test(content)) {
+    return { ok: false, reason: "diff-output" };
+  }
+  return { ok: true, target: "", content: content.slice(0, FINAL_RESPONSE_MAX) };
+}
+
+export function hermesBridgeDecision(stdout: string, state: TurnState): BridgeDecision {
+  if (state.sent) return { ok: false, reason: "already-sent" };
+  if (state.held) return { ok: false, reason: "already-held" };
+  if (!state.engaged || !state.target) return { ok: false, reason: "no-open-tag-read" };
+  if (!/^(#|dm:|thread:)/.test(state.target)) return { ok: false, reason: "invalid-target" };
+  const cleaned = cleanHermesStdout(stdout);
+  if (!cleaned.ok) return cleaned;
+  return { ok: true, target: state.target, content: cleaned.content };
+}
+
+async function responseJson(res: Response): Promise<any> {
+  try { return await res.json(); } catch { return {}; }
+}
+
+export async function postHermesBridgeMessage(
+  fetchImpl: typeof fetch,
+  serverUrl: string,
+  headers: Record<string, string>,
+  target: string,
+  content: string,
+): Promise<BridgePostResult> {
+  const url = `${serverUrl}/agent-api/message/send`;
+  const first = await fetchImpl(url, {
+    method: "POST",
+    headers,
+    body: JSON.stringify({ target, content }),
+  });
+  const firstBody = await responseJson(first);
+  if (!first.ok) return { ok: false, status: first.status };
+  if (!firstBody?.held) return { ok: true };
+  const second = await fetchImpl(url, {
+    method: "POST",
+    headers,
+    body: JSON.stringify({ target, sendDraft: true }),
+  });
+  return second.ok ? { ok: true, held: true, sentDraft: true } : { ok: false, held: true, sentDraft: false, status: second.status };
 }
 
 export function hermesProfileHome(profile: string, home = homedir(), roots = hermesProfileRoots(home)): string | null {
@@ -112,7 +187,8 @@ class HermesRun {
     this.cb.onActivity("working", `hermes/${this.profile}`);
     const prompt = buildHermesPrompt(message, this.opts);
     const args = buildHermesArgs(prompt, this.sessionId);
-    const proc = spawn("hermes", args, { cwd: this.opts.cwd, stdio: ["ignore", "pipe", "pipe"], env: this.env });
+    const turnFile = path.join(tmpdir(), `open-tag-hermes-turn-${Date.now()}-${Math.random().toString(36).slice(2)}.jsonl`);
+    const proc = spawn("hermes", args, { cwd: this.opts.cwd, stdio: ["ignore", "pipe", "pipe"], env: { ...this.env, OPEN_TAG_TURN_FILE: turnFile } });
     this.proc = proc;
     let stdout = "";
     const errTail: string[] = [];
@@ -136,7 +212,7 @@ class HermesRun {
       if (!this.everSucceeded) this.cb.onExit(1);
       else this.pump();
     });
-    proc.on("exit", (code) => {
+    proc.on("exit", async (code) => {
       this.proc = null;
       if (this.stopped) return;
       const out = stdout.trim();
@@ -148,8 +224,9 @@ class HermesRun {
           this.sessionId = nextSessionId;
           this.cb.onSession(nextSessionId);
         }
+        const bridged = await this.bridgeFinalResponse(turnFile, out);
         if (out) this.cb.onTrajectory([{ kind: "text", text: clip(out) }]);
-        this.cb.onActivity("online", "");
+        if (bridged !== false) this.cb.onActivity("online", "");
         this.turnBusy = false;
         this.pump();
         return;
@@ -173,6 +250,41 @@ class HermesRun {
       }
       this.pump();
     });
+  }
+
+  private async bridgeFinalResponse(turnFile: string, stdout: string): Promise<boolean | null> {
+    let state: TurnState = { sent: false, held: false, engaged: false, target: null };
+    try { state = parseHermesTurnEvents(await readFile(turnFile, "utf8")); }
+    catch { /* no CLI side-channel events recorded */ }
+    finally { try { await unlink(turnFile); } catch { /* best-effort cleanup */ } }
+    const decision = hermesBridgeDecision(stdout, state);
+    if (!decision.ok) {
+      if (stdout.trim() && decision.reason !== "already-sent") {
+        this.cb.log.warn("hermes final response not bridged", { reason: decision.reason });
+        this.cb.onActivity("error", `hermes reply not sent (${decision.reason})`);
+        return false;
+      }
+      return null;
+    }
+    try {
+      const result = await postHermesBridgeMessage(fetch, this.env.OPEN_TAG_SERVER_URL ?? "", {
+        authorization: `Bearer ${this.env.OPEN_TAG_AGENT_TOKEN ?? ""}`,
+        "x-agent-id": this.env.OPEN_TAG_AGENT_ID ?? "",
+        "content-type": "application/json",
+      }, decision.target, decision.content);
+      if (!result.ok) {
+        this.cb.log.warn("hermes final response bridge failed", { status: result.status, target: decision.target });
+        this.cb.onActivity("error", "hermes bridge send failed");
+        return false;
+      } else {
+        this.cb.log.info("hermes final response bridged", { target: decision.target, chars: decision.content.length, held: !!result.held });
+        return true;
+      }
+    } catch (e) {
+      this.cb.log.warn("hermes final response bridge failed", { detail: String((e as any)?.message ?? e), target: decision.target });
+      this.cb.onActivity("error", "hermes bridge send failed");
+      return false;
+    }
   }
 
   stop(): void {

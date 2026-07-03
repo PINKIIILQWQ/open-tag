@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import { buildHermesArgs, buildHermesPrompt, hermesProfile, hermesProfileHome, hermesRuntimeEnv, parseHermesSessionId } from "./hermesRuntime.js";
+import { buildHermesArgs, buildHermesPrompt, hermesBridgeDecision, hermesProfile, hermesProfileHome, hermesRuntimeEnv, parseHermesSessionId, parseHermesTurnEvents, postHermesBridgeMessage } from "./hermesRuntime.js";
 import { discoverHermesProfilesFromRoots } from "./listModels.js";
 
 test("Hermes profile comes from runtimeConfig first, then model, then default", () => {
@@ -94,4 +94,53 @@ test("Hermes runtime resolves profiles from HERMES_PROFILE_DIR as well as ~/.her
   } finally {
     rmSync(root, { recursive: true, force: true });
   }
+});
+
+test("Hermes final response bridge requires check/read evidence and filters unsafe stdout", () => {
+  const checked = parseHermesTurnEvents(JSON.stringify({ type: "check", target: "dm:@User", count: 1 }));
+  assert.deepEqual(checked, { sent: false, held: false, engaged: true, target: "dm:@User" });
+  assert.deepEqual(hermesBridgeDecision("⚠ scanner warning\n\nI handled that.", checked), {
+    ok: true,
+    target: "dm:@User",
+    content: "I handled that.",
+  });
+
+  assert.deepEqual(hermesBridgeDecision("I handled that.", parseHermesTurnEvents("")), {
+    ok: false,
+    reason: "no-open-tag-read",
+  });
+  assert.equal(hermesBridgeDecision("Error: provider rejected the request", checked).ok, false);
+  assert.equal(hermesBridgeDecision("┊ review diff\na/MEMORY.md → b/MEMORY.md\n@@ -1 +1", checked).ok, false);
+});
+
+test("Hermes final response bridge avoids double posting after explicit send or hold", () => {
+  const sent = parseHermesTurnEvents([
+    JSON.stringify({ type: "check", target: "dm:@User", count: 1 }),
+    JSON.stringify({ type: "send", target: "dm:@User", seq: 12 }),
+  ].join("\n"));
+  assert.deepEqual(hermesBridgeDecision("Already sent.", sent), { ok: false, reason: "already-sent" });
+
+  const held = parseHermesTurnEvents(JSON.stringify({ type: "held", target: "dm:@User" }));
+  assert.deepEqual(hermesBridgeDecision("Freshness hold: showing latest 1 of 1 newer message.", held), { ok: false, reason: "already-held" });
+});
+
+test("Hermes bridge submits held fallback content as the saved draft", async () => {
+  const calls: unknown[] = [];
+  const fetchImpl: typeof fetch = async (_input, init) => {
+    const body = JSON.parse(String(init?.body ?? "{}"));
+    calls.push(body);
+    return {
+      ok: true,
+      status: 200,
+      json: async () => body.sendDraft ? { ok: true, id: "m2", seq: 2 } : { held: true, draft: true },
+    } as Response;
+  };
+
+  const result = await postHermesBridgeMessage(fetchImpl, "http://server", { authorization: "Bearer t", "x-agent-id": "a", "content-type": "application/json" }, "dm:@User", "Final answer");
+
+  assert.deepEqual(result, { ok: true, held: true, sentDraft: true });
+  assert.deepEqual(calls, [
+    { target: "dm:@User", content: "Final answer" },
+    { target: "dm:@User", sendDraft: true },
+  ]);
 });
