@@ -2,7 +2,7 @@
 import { mkdir, writeFile, readFile, access, rm } from "node:fs/promises";
 import path from "node:path";
 import os from "node:os";
-import { buildSystemPrompt, STARTUP_NUDGE, RESUME_NUDGE, inboxNotice } from "./prompt.js";
+import { buildSystemPrompt, STARTUP_NUDGE, RESUME_NUDGE, ONE_SHOT_WAKE_NUDGE, inboxNotice } from "./prompt.js";
 import { seedMemory, applyProfileToMemory } from "./memory.js";
 import { ensureOpenTagBin } from "./openTagBin.js";
 import { getRuntime } from "./runtimes.js";
@@ -13,6 +13,7 @@ import { agentsDir } from "../paths.js";
 const DATA_DIR = agentsDir();
 const IDLE_MS = Number(process.env.OPEN_TAG_IDLE_MS ?? 10 * 60 * 1000); // how long before idle sleep (kills process to save memory; next wake uses --resume)
 const DELIVER_DEBOUNCE_MS = Number(process.env.OPEN_TAG_DELIVER_DEBOUNCE_MS ?? 3000); // batching window for deliveries while agent is busy (saves tokens, reduces interruptions)
+const ONE_SHOT_DELIVER_DEBOUNCE_MS = Number(process.env.OPEN_TAG_ONE_SHOT_DELIVER_DEBOUNCE_MS ?? process.env.OPEN_TAG_HERMES_DELIVER_DEBOUNCE_MS ?? 500); // One-shot runtimes need a short fixed wait when there is only one live notice.
 const PENDING_DELIVER_TTL_MS = Number(process.env.OPEN_TAG_PENDING_DELIVER_TTL_MS ?? 15_000); // start+deliver can arrive back-to-back; keep deliver briefly while start prepares workspace
 
 export interface AgentConfig {
@@ -29,6 +30,7 @@ interface AgentManagerOptions {
   dataDir?: string;
   binDir?: string;
   deliverDebounceMs?: number;
+  oneShotDeliverDebounceMs?: number;
   pendingDeliverTtlMs?: number;
   runtimeResolver?: (name: string) => Runtime | null;
 }
@@ -40,6 +42,7 @@ export class AgentManager {
   private binDir: string;
   private dataDir: string;
   private deliverDebounceMs: number;
+  private oneShotDeliverDebounceMs: number;
   private pendingDeliverTtlMs: number;
   private runtimeResolver: (name: string) => Runtime | null;
   private log = createLogger("daemon:agents");
@@ -47,6 +50,7 @@ export class AgentManager {
     this.binDir = opts.binDir ?? ensureOpenTagBin();
     this.dataDir = opts.dataDir ?? DATA_DIR;
     this.deliverDebounceMs = opts.deliverDebounceMs ?? DELIVER_DEBOUNCE_MS;
+    this.oneShotDeliverDebounceMs = opts.oneShotDeliverDebounceMs ?? ONE_SHOT_DELIVER_DEBOUNCE_MS;
     this.pendingDeliverTtlMs = opts.pendingDeliverTtlMs ?? PENDING_DELIVER_TTL_MS;
     this.runtimeResolver = opts.runtimeResolver ?? getRuntime;
   }
@@ -154,18 +158,26 @@ export class AgentManager {
     };
 
     // No await between set and runtime.start (single-threaded event loop), so deliver cannot interleave and read an empty session.
-    // Deliveries that arrived earlier during workspace preparation are flushed just below.
+    // Deliveries that arrived earlier during workspace preparation are flushed just below, except
+    // one-shot runtimes where the wakeup prompt itself is the concrete "check then send" turn.
+    const pendingDeliveryCount = this.pendingDelivers.get(agentId)?.items.length ?? 0;
+    const useOneShotWakeNudge = !!runtime.oneShotWake && pendingDeliveryCount > 0;
     this.agents.set(agentId, running);
     running.session = runtime.start({
       cwd: dir, model: config.model, runtimeConfig: config.runtimeConfig, sessionId: config.sessionId, systemPrompt, env,
-      initialPrompt: config.sessionId ? RESUME_NUDGE : STARTUP_NUDGE,
+      initialPrompt: useOneShotWakeNudge ? ONE_SHOT_WAKE_NUDGE : (config.sessionId ? RESUME_NUDGE : STARTUP_NUDGE),
     }, cb);
 
     this.send({ type: "agent:status", agentId, status: "active" });
     this.send({ type: "agent:activity", agentId, activity: "working", detail: "starting" });
     this.log.info("agent started", { agentId, runtime: runtime.name, model: config.model ?? "(default)", resume: !!config.sessionId, experimental: runtime.experimental ?? false });
     this.resetIdle(agentId);
-    this.flushPendingDeliver(agentId);
+    if (useOneShotWakeNudge) {
+      this.clearPendingDeliver(agentId);
+      this.log.debug("pending deliver consumed by one-shot wake nudge", { agentId, runtime: runtime.name, count: pendingDeliveryCount });
+    } else {
+      this.flushPendingDeliver(agentId);
+    }
   }
 
   private queuePendingDeliver(agentId: string, item: PendingDeliver): void {
@@ -198,6 +210,11 @@ export class AgentManager {
     for (const item of q.items) this.deliver(agentId, item.from, item.target, item.mentioned, item.meta);
   }
 
+  private debounceMsFor(r: Running): number {
+    const runtime = this.runtimeResolver(r.config.runtime ?? "claude");
+    return runtime?.oneShotWake ? this.oneShotDeliverDebounceMs : this.deliverDebounceMs;
+  }
+
   /** server agent:deliver — wake a running agent with new messages; if start is still preparing the workspace, briefly queue and flush once the runtime exists. */
   deliver(agentId: string, from: string, target: string, mentioned = false, meta: DeliverMeta = {}): void {
     const r = this.agents.get(agentId);
@@ -216,7 +233,7 @@ export class AgentManager {
       const note = inboxNotice({ count: buf.count, from: buf.from, targetName: buf.targetName, firstShort: buf.firstShort, latestShort: buf.latestShort, isTask: buf.isTask, isDm: buf.targetName.startsWith("dm:"), changedTargets: buf.targets.size, mentioned: buf.mentioned });
       try { r.session.deliver(note); this.resetIdle(agentId); this.log.debug("inbox notice -> agent", { agentId, count: buf.count, mentioned: buf.mentioned }); }
       catch (e) { this.log.warn("deliver failed", { agentId, detail: String(e) }); }
-    }, this.deliverDebounceMs);
+    }, this.debounceMsFor(r));
     r.deliverBuf = buf;
   }
 }
