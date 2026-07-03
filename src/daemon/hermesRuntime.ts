@@ -45,7 +45,7 @@ export function buildHermesArgs(prompt: string, sessionId?: string | null): stri
 
 interface TurnState { sent: boolean; held: boolean; engaged: boolean; target: string | null; }
 type BridgeDecision = { ok: true; target: string; content: string } | { ok: false; reason: string };
-interface BridgePostResult { ok: boolean; held?: boolean; sentDraft?: boolean; status?: number }
+interface BridgePostResult { ok: boolean; held?: boolean; sentDraft?: boolean; status?: number; text?: string }
 
 export function parseHermesSessionId(stderr: string): string | null {
   const matches = [...stderr.matchAll(/^session_id:\s*(\S+)\s*$/gm)];
@@ -117,12 +117,9 @@ export async function postHermesBridgeMessage(
   const firstBody = await responseJson(first);
   if (!first.ok) return { ok: false, status: first.status };
   if (!firstBody?.held) return { ok: true };
-  const second = await fetchImpl(url, {
-    method: "POST",
-    headers,
-    body: JSON.stringify({ target, sendDraft: true }),
-  });
-  return second.ok ? { ok: true, held: true, sentDraft: true } : { ok: false, held: true, sentDraft: false, status: second.status };
+  const held: BridgePostResult = { ok: false, held: true, sentDraft: false };
+  if (typeof firstBody.text === "string") held.text = firstBody.text;
+  return held;
 }
 
 export function hermesProfileHome(profile: string, home = homedir(), roots = hermesProfileRoots(home)): string | null {
@@ -273,6 +270,12 @@ class HermesRun {
         "content-type": "application/json",
       }, decision.target, decision.content);
       if (!result.ok) {
+        if (result.held) {
+          this.cb.log.warn("hermes final response freshness-held; draft saved for review", { target: decision.target });
+          if (result.text) this.cb.onTrajectory([{ kind: "status", text: "[open-tag freshness hold]\n" + clip(result.text) }]);
+          this.cb.onActivity("error", "hermes reply held for freshness review");
+          return false;
+        }
         this.cb.log.warn("hermes final response bridge failed", { status: result.status, target: decision.target });
         this.cb.onActivity("error", "hermes bridge send failed");
         return false;

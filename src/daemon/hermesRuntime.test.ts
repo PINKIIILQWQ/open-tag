@@ -124,7 +124,7 @@ test("Hermes final response bridge avoids double posting after explicit send or 
   assert.deepEqual(hermesBridgeDecision("Freshness hold: showing latest 1 of 1 newer message.", held), { ok: false, reason: "already-held" });
 });
 
-test("Hermes bridge submits held fallback content as the saved draft", async () => {
+test("Hermes bridge does not auto-submit a freshness-held draft", async () => {
   const calls: unknown[] = [];
   const fetchImpl: typeof fetch = async (_input, init) => {
     const body = JSON.parse(String(init?.body ?? "{}"));
@@ -132,15 +132,14 @@ test("Hermes bridge submits held fallback content as the saved draft", async () 
     return {
       ok: true,
       status: 200,
-      json: async () => body.sendDraft ? { ok: true, id: "m2", seq: 2 } : { held: true, draft: true },
+      json: async () => ({ held: true, draft: true }),
     } as Response;
   };
 
   const result = await postHermesBridgeMessage(fetchImpl, "http://server", { authorization: "Bearer t", "x-agent-id": "a", "content-type": "application/json" }, "dm:@User", "Final answer");
 
-  assert.deepEqual(result, { ok: true, held: true, sentDraft: true });
+  assert.deepEqual(result, { ok: false, held: true, sentDraft: false });
   assert.deepEqual(calls, [
     { target: "dm:@User", content: "Final answer" },
-    { target: "dm:@User", sendDraft: true },
   ]);
 });
