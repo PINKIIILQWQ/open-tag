@@ -3,7 +3,7 @@ import { useParams, useNavigate, useSearchParams } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import i18n from "../i18n";
 import { useStore, fmtTime, type Msg, type Att } from "../store.tsx";
-import { PAGE_SIZE, appendWithCap } from "../lib/msgPaging";
+import { PAGE_SIZE, appendWithCap, nextScrollState } from "../lib/msgPaging";
 import { MessageContent } from "../messageRender.tsx";
 import { nextThreadMeta } from "../threadUnread";
 import { Smile, X, ExternalLink, CheckCircle2, MessageCircle, MoreHorizontal, Link2, Clipboard, Bookmark, CheckSquare, Circle, Play, Eye, Ban, ArrowDown, BellOff, Lock, Globe, Archive, Trash2 } from "lucide-react";
@@ -24,6 +24,23 @@ import { useConfirm, useEscClose } from "../ConfirmModal.tsx";
 const fmtSize = (n?: number) => (!n ? "" : n < 1024 ? n + " B" : n < 1048576 ? (n / 1024).toFixed(1) + " KB" : (n / 1048576).toFixed(1) + " MB");
 const isImage = (m?: string) => !!m && m.startsWith("image/");
 const isVideo = (m?: string) => !!m && m.startsWith("video/");
+export const BACK_TO_BOTTOM_SCROLL_MS = 800;
+export const backToBottomEase = (t: number) => 1 - Math.pow(1 - t, 3);
+
+export function animateBackToBottom(el: Pick<HTMLDivElement, "scrollTop" | "scrollHeight">, done?: () => void) {
+  const start = el.scrollTop;
+  const target = el.scrollHeight;
+  const delta = target - start;
+  if (!delta) { done?.(); return; }
+  const startTime = performance.now();
+  const step = (now: number) => {
+    const t = Math.min(1, (now - startTime) / BACK_TO_BOTTOM_SCROLL_MS);
+    el.scrollTop = start + delta * backToBottomEase(t);
+    if (t < 1) requestAnimationFrame(step);
+    else { el.scrollTop = target; done?.(); }
+  };
+  requestAnimationFrame(step);
+}
 
 // Message attachments: images shown inline with lightbox, videos shown with inline player; other files shown as a file card. Videos that fail to play fall back to a download card.
 function AttCard({ a, url }: { a: Att; url: string }) {
@@ -125,6 +142,8 @@ export function Chat() {
   const scrollRef = useRef<HTMLDivElement>(null);
   const atBottomRef = useRef(true); // tracks whether the scroll position is at the bottom; new messages auto-scroll only when already at the bottom, preserving history browsing
   const [showJump, setShowJump] = useState(false); // when not at the bottom, show the "Back to bottom" jump button
+  const showJumpRef = useRef(false);
+  const scrollingToBottomRef = useRef(false); // suppress jump-button flicker while the 0.8s smooth scroll is in progress
   const [hasMore, setHasMore] = useState(false); // older messages remain before the loaded window → drives scroll-to-top "load more"
   const loadingOlderRef = useRef(false); // de-dupes concurrent "load older" fetches while one is in flight
   const prependRestoreRef = useRef<number | null>(null); // scrollHeight captured before a prepend; restored after so the viewport doesn't jump
@@ -208,8 +227,15 @@ export function Chat() {
   // Keep the viewport anchored across an older-page prepend: restore scrollTop before paint. Runs before the auto-scroll effect above, which is a no-op here anyway (a prepend only happens while scrolled up, so atBottomRef is false).
   useLayoutEffect(() => { const el = scrollRef.current; if (el && prependRestoreRef.current != null) { el.scrollTop = el.scrollHeight - prependRestoreRef.current; prependRestoreRef.current = null; } }, [msgs]);
   useEffect(() => { if (trimmedRef.current) { trimmedRef.current = false; setHasMore(true); } }, [msgs]); // a live-tail trim opened a gap at the top → older messages stay re-fetchable
-  useEffect(() => { atBottomRef.current = true; setShowJump(false); newMsgOrderRef.current.clear(); burstCountRef.current = 0; }, [cur?.id]); // reset bottom-pin state + new-msg enter animation tracking on channel switch
-  const toBottom = () => { const el = scrollRef.current; if (el) el.scrollTop = el.scrollHeight; atBottomRef.current = true; setShowJump(false); };
+  const setJumpVisible = (visible: boolean) => { showJumpRef.current = visible; setShowJump(visible); };
+  useEffect(() => { atBottomRef.current = true; setJumpVisible(false); newMsgOrderRef.current.clear(); burstCountRef.current = 0; }, [cur?.id]); // reset bottom-pin state + new-msg enter animation tracking on channel switch
+  const toBottom = () => {
+    const el = scrollRef.current;
+    if (!el) { atBottomRef.current = true; setJumpVisible(false); return; }
+    scrollingToBottomRef.current = true;
+    setJumpVisible(false);
+    animateBackToBottom(el, () => { scrollingToBottomRef.current = false; atBottomRef.current = true; setJumpVisible(false); });
+  };
   // Fetch the previous (older) page via the `before` keyset cursor and prepend it; guarded so concurrent scroll events can't fire duplicate loads.
   const loadOlder = async () => {
     if (!cur || loadingOlderRef.current || !hasMore || !msgs.length) return;
@@ -223,7 +249,7 @@ export function Chat() {
       setHasMore(!!d.hasMore);
     } catch { /* transient — the next scroll-to-top retries */ } finally { loadingOlderRef.current = false; }
   };
-  const onScroll = () => { const el = scrollRef.current; if (!el) return; if (el.scrollTop < 80 && hasMore && !loadingOlderRef.current) void loadOlder(); const near = el.scrollHeight - el.scrollTop - el.clientHeight < 120; atBottomRef.current = near; setShowJump(!near); };
+  const onScroll = () => { const el = scrollRef.current; if (!el) return; if (el.scrollTop < 80 && hasMore && !loadingOlderRef.current) void loadOlder(); const st = nextScrollState(el, showJumpRef.current); atBottomRef.current = st.atBottom; if (!scrollingToBottomRef.current && st.changed) setJumpVisible(st.showJump); };
   // highlightedMsgRef guards the flash to once per target. The deps below include `msgs`, so without it every
   // incoming live message (msgs changes) would re-run this while ?msg= is still in the URL and re-flash the
   // inbox-clicked message on each new message. Re-armed on channel switch so re-opening the same target flashes again.
