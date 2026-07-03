@@ -268,6 +268,22 @@ export function Chat() {
   const taskAssignee = (m: Msg) => { if (!m.taskAssigneeId) return ""; const a = agents.find((x) => x.id === m.taskAssigneeId); if (a) return " @" + (a.displayName || a.name); const h = humans.find((x) => x.userId === m.taskAssigneeId); return h ? " @" + (h.displayName || h.name) : ""; };
   // Handles task status change / claim from the task badge; socket message:updated event refreshes the message automatically
   const doTask = async (m: Msg, action: string, body?: unknown) => { try { await api("PATCH", `/api/tasks/${m.id}/${action}`, body); } catch { /* will self-correct on next reload */ } };
+  const copyMarkdown = (content: string) => { navigator.clipboard?.writeText(content).catch(() => {}); };
+  const agentLiveState = (a?: (typeof agents)[number]) => {
+    if (!a) return "offline";
+    const activity = a.activity && a.activity !== "offline" ? a.activity : "";
+    const status = a.status && a.status !== "offline" ? a.status : "";
+    return activity || status || "offline";
+  };
+  const agentActivityText = (a?: (typeof agents)[number]) => {
+    const detail = a?.activityDetail?.trim();
+    if (detail) return detail;
+    if (a?.activity === "working") return t("liveBar.working");
+    if (a?.activity === "thinking") return t("liveBar.thinking");
+    if (a?.activity && a.activity !== "offline") return a.activity;
+    if (a?.status && a.status !== "offline") return a.status;
+    return "";
+  };
   // Routes inline token clicks (@mention / #channel / thread / task #N) inside MessageContent
   const navToken = async (type: string, args: string[]) => {
     if (type === "agent") return setProfile({ type: "agent", id: args[0]! });
@@ -313,8 +329,11 @@ export function Chat() {
               {loaded && !msgs.length && <PaneEmpty icon={<MessageCircle size={30} />} title={t("chat.channelEmpty")} />}
               {msgs.map((m) => {
                 const ag = m.senderType === "agent" && m.senderId ? agents.find((a) => a.id === m.senderId) : undefined; // used for role description and avatar status dot
+                const agLive = agentLiveState(ag);
+                const agActivity = agentActivityText(ag);
                 const tm = threadMeta[m.id];
                 const isMember = m.senderType !== "agent" && m.senderType !== "system"; // human/user senders get a "member" badge
+                const isSaved = savedIds.has(m.id);
                 // action card (agent proposal card) → rendered by dedicated ActionCardMsg component
                 if (m.messageType === "action" && m.actionMetadata?.kind === "action-card") return <ActionCardMsg m={m} key={m.id} />;
                 // system messages (task lifecycle events, etc.) → centered grey bar (no avatar, no full message block)
@@ -330,14 +349,14 @@ export function Chat() {
                 return (
                 <div className={"msg" + (isNewMsg ? " msg-enter" : "")} id={"m-" + m.id} key={m.id} onContextMenu={(e) => { e.preventDefault(); setCtxMenu({ m, x: e.clientX, y: e.clientY }); }} style={isNewMsg ? { "--msg-delay": `${staggerIdx * 60}ms` } as CSSProperties : undefined}>
                   <div className="msg-toolbar">
-                    <button title={t("chat.emojiActions")} onClick={(e) => { const r = e.currentTarget.getBoundingClientRect(); setCtxMenu({ m, x: r.left - 180, y: r.bottom + 4 }); }}><Smile size={15} /></button>
-                    <button title={t("chat.openThread")} onClick={() => startThread(m)}><MessageCircle size={15} /></button>
+                    <button className={isSaved ? "on" : ""} title={isSaved ? t("chat.unsave") : t("chat.saveMessage")} onClick={() => { isSaved ? unsaveMsg(m.id) : saveMsg(m.id); }}><Bookmark size={15} fill={isSaved ? "currentColor" : "none"} /></button>
+                    <button title={t("chat.copyMarkdown")} onClick={() => copyMarkdown(m.content)}><Clipboard size={15} /></button>
                     <button title={t("chat.more")} onClick={(e) => { const r = e.currentTarget.getBoundingClientRect(); setCtxMenu({ m, x: r.right - 212, y: r.bottom + 4 }); }}><MoreHorizontal size={15} /></button>
                   </div>
                   {ag
                     ? <span className="msg-av clickable" onClick={() => setProfile({ type: "agent", id: m.senderId! })}
                         onMouseEnter={(e) => setHoverAgent({ id: m.senderId!, x: e.currentTarget.getBoundingClientRect().right + 8, y: e.currentTarget.getBoundingClientRect().top })}
-                        onMouseLeave={() => setHoverAgent(null)}><Avatar seed={m.senderName} url={senderAvatar(m)} size={36} />{ag.activity && ag.activity !== "offline" && <span className={"av-status " + ag.activity} />}</span>
+                        onMouseLeave={() => setHoverAgent(null)}><Avatar seed={m.senderName} url={senderAvatar(m)} size={36} />{agLive !== "offline" && <span className={"av-status " + agLive} />}</span>
                     : m.senderId
                       ? <span className="msg-av clickable" onClick={() => setProfile({ type: "human", id: m.senderId! })}><Avatar seed={m.senderName} url={senderAvatar(m)} size={36} /></span>
                       : <Avatar seed={m.senderName} url={senderAvatar(m)} size={36} />}
@@ -350,8 +369,12 @@ export function Chat() {
                         : m.senderId
                           ? <span className="who clickable" onClick={() => setProfile({ type: "human", id: m.senderId! })}>{m.senderName}</span>
                           : <span className="who">{m.senderName}</span>}
-                      {ag?.description ? <span className="msg-role">{ag.description}</span> : isMember ? <span className="member-badge">member</span> : null}
                       <span className="ts">{fmtTime(m.createdAt)}</span></div>
+                    {ag && (agActivity || ag.description) ? <div className="msg-subhead">
+                      {agActivity ? <code className={"msg-activity " + agLive}>{agActivity}</code> : null}
+                      {ag.description ? <span className="msg-role">{ag.description}</span> : null}
+                    </div> : null}
+                    {isMember ? <div className="msg-subhead"><span className="member-badge">member</span></div> : null}
                     {!!m.content && <div className="mbody"><MessageContent content={m.content} mentions={m.mentions || []} channels={channels} nav={navToken} /></div>}
                     {!!m.attachments?.length && <div className="msg-atts">{m.attachments.map((a) => <AttCard key={a.id} a={a} url={attachmentUrl(a.id)} />)}</div>}
                     {/* persistent meta row: task badge + thread button + reactions all on the same line (reactions no longer occupy a separate row) */}
@@ -420,8 +443,8 @@ export function Chat() {
           <div className="ctx-backdrop" onClick={close} onContextMenu={(e) => { e.preventDefault(); close(); }}>
             <div className="ctx-menu" style={{ left: Math.min(ctxMenu.x, window.innerWidth - 230), top: Math.min(ctxMenu.y, window.innerHeight - 320) }} onClick={(e) => e.stopPropagation()}>
               <div className="ctx-rx">{QUICK_EMOJIS.slice(0, 6).map((e) => <button key={e} title={e} onClick={() => { react(m.id, e, false); close(); }}>{e}</button>)}</div>
-              <button className="ctx-item" onClick={() => copy(link)}><Link2 size={14} /> {t("chat.copyLink")}</button>
               <button className="ctx-item" onClick={() => copy(m.content)}><Clipboard size={14} /> {t("chat.copyMarkdown")}</button>
+              <button className="ctx-item" onClick={() => copy(link)}><Link2 size={14} /> {t("chat.copyLink")}</button>
               <button className="ctx-item" onClick={() => { startThread(m); close(); }}><MessageCircle size={14} /> {t("chat.openThread")}</button>
               <button className="ctx-item" onClick={() => { savedIds.has(m.id) ? unsaveMsg(m.id) : saveMsg(m.id); close(); }}><Bookmark size={14} fill={savedIds.has(m.id) ? "currentColor" : "none"} /> {savedIds.has(m.id) ? t("chat.unsave") : t("chat.saveMessage")}</button>
               <button className="ctx-item" onClick={async () => { close(); await api("POST", "/api/tasks/convert-message", { messageId: m.id }); }}><CheckSquare size={14} /> {t("chat.convertToTask")}</button>
@@ -533,9 +556,10 @@ function ThreadPanel({ channelId, parent, onClose, onOpenProfile }: { channelId:
   const row = (m: Msg) => {
     if (m.senderType === "system") return <div className="msg-sys" id={"m-" + m.id} key={m.id}>{m.content}</div>; // system messages render as a banner with no avatar
     const ag = m.senderType === "agent" && m.senderId ? agents.find((a) => a.id === m.senderId) : undefined; // agent sender → avatar and name are clickable to open the profile panel
+    const live = ag ? ((ag.activity && ag.activity !== "offline" ? ag.activity : ag.status) || "offline") : "offline";
     return (
     <div className="msg" key={m.id}>
-      {ag ? <span className="msg-av clickable" onClick={() => onOpenProfile("agent", m.senderId!)}><Avatar seed={m.senderName} url={senderAvatar(m)} size={32} /></span>
+      {ag ? <span className="msg-av clickable" onClick={() => onOpenProfile("agent", m.senderId!)}><Avatar seed={m.senderName} url={senderAvatar(m)} size={32} />{live !== "offline" && <span className={"av-status " + live} />}</span>
         : m.senderId ? <span className="msg-av clickable" onClick={() => onOpenProfile("human", m.senderId!)}><Avatar seed={m.senderName} url={senderAvatar(m)} size={32} /></span>
         : <Avatar seed={m.senderName} url={senderAvatar(m)} size={32} />}
       {/* content column reuses .msg-col (flex:1;min-width:0) like the main chat — without it a flex child defaults to min-width:auto and a long unbreakable token blows the message past this narrow thread panel */}
