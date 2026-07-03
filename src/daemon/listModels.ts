@@ -1,9 +1,10 @@
-// Model discovery for the CLI runtimes that can list their own models (opencode / cursor / pi).
+// Model/profile discovery for CLI runtimes that can report local choices.
 // The daemon shells out to the runtime's list command on its own machine and parses stdout, so the
 // candidates reflect what that machine + login can actually use (not a hard-coded server table).
 //
-// Scope (first slice): opencode / cursor / pi only.
-//  - claude / codex have no "list models" command — their catalogs stay static, server-side.
+// Scope: opencode / cursor / pi enumerate models; Hermes enumerates local profiles.
+//  - claude / codex have no "list models" command — their catalogs stay static, server-side, but
+//    supported thinking/reasoning controls are probed dynamically.
 //  - copilot / kimi would need an ACP (JSON-RPC over stdio) handshake — not done yet.
 //  Both gaps are tracked in docs/tech-debt-tracker.md.
 //
@@ -163,15 +164,6 @@ function isPiNoise(line: string): boolean {
   return l.includes("no models match pattern") || l.startsWith("warning:") || l.startsWith("error:") || l.startsWith("info:");
 }
 
-const HERMES_PROFILE_PRIORITY: Record<string, number> = {
-  "codex-spark": 0,
-  qoder: 1,
-  codex: 2,
-  gemini: 3,
-  "agentkb-librarian": 4,
-  xiaos: 9,
-};
-
 function labelFromId(id: string): string {
   return id.split(/[-_]/).filter(Boolean).map(titleCase).join(" ") || id;
 }
@@ -205,7 +197,9 @@ function isHermesProfileDir(dir: string): boolean {
 }
 
 export function discoverHermesProfilesFromRoots(roots: string[]): DiscoveredModel[] {
-  const found = new Map<string, DiscoveredModel>();
+  const found = new Map<string, DiscoveredModel>([
+    ["default", { id: "default", label: "Default profile", provider: "hermes", default: true }],
+  ]);
   for (const root of roots) {
     if (!root || !existsSync(root)) continue;
     let entries: string[];
@@ -215,13 +209,12 @@ export function discoverHermesProfilesFromRoots(roots: string[]): DiscoveredMode
       try { if (!statSync(dir).isDirectory()) continue; } catch { continue; }
       if (!isHermesProfileDir(dir)) continue;
       if (!isModelId(entry)) continue;
-      if (!found.has(entry)) found.set(entry, { id: entry, label: hermesProfileLabel(dir, entry), provider: "hermes", default: entry === "codex-spark" });
+      if (!found.has(entry)) found.set(entry, { id: entry, label: hermesProfileLabel(dir, entry), provider: "hermes" });
     }
   }
   return [...found.values()].sort((a, b) => {
-    const pa = HERMES_PROFILE_PRIORITY[a.id] ?? 50;
-    const pb = HERMES_PROFILE_PRIORITY[b.id] ?? 50;
-    if (pa !== pb) return pa - pb;
+    if (a.id === "default") return -1;
+    if (b.id === "default") return 1;
     return a.id.localeCompare(b.id);
   });
 }
@@ -230,7 +223,6 @@ function discoverHermesProfiles(): DiscoveredModel[] {
   const home = homedir();
   const roots = [
     process.env.HERMES_PROFILE_DIR,
-    path.join(home, ".agentkb", "local", "hermes-profiles"),
     path.join(home, ".hermes", "profiles"),
   ].filter((v): v is string => !!v);
   return discoverHermesProfilesFromRoots(roots);

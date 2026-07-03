@@ -2,7 +2,7 @@
 //
 // Hermes owns provider credentials and profile configuration. OpenTag only selects a Hermes profile
 // (temporarily stored in agent.model) and passes the OpenTag system prompt + message into an isolated
-// agent workspace. This keeps secrets in Hermes/AgentKB config, not in the OpenTag database.
+// agent workspace. This keeps secrets in Hermes config, not in the OpenTag database.
 import { spawn, type ChildProcess } from "node:child_process";
 import { existsSync } from "node:fs";
 import { homedir } from "node:os";
@@ -16,7 +16,11 @@ export function hermesProfile(model: string | undefined, runtimeConfig: Record<s
   const configured = runtimeConfig?.profile;
   if (typeof configured === "string" && configured.trim()) return configured.trim();
   if (model && model !== "default") return model;
-  return "codex-spark";
+  return "default";
+}
+
+export function hermesProfileRoots(home = homedir(), env: NodeJS.ProcessEnv = process.env): string[] {
+  return [env.HERMES_PROFILE_DIR, path.join(home, ".hermes", "profiles")].filter((v): v is string => !!v);
 }
 
 export function buildHermesPrompt(message: string, opts: Pick<StartOpts, "cwd" | "systemPrompt">): string {
@@ -46,10 +50,27 @@ function isMissingHermesSession(stderr: string): boolean {
   return /Session not found:/i.test(stderr);
 }
 
-export function hermesProfileHome(profile: string, home = homedir()): string | null {
+export function hermesProfileHome(profile: string, home = homedir(), roots = hermesProfileRoots(home)): string | null {
   if (!profile || profile === "default") return null;
-  const dir = path.join(home, ".hermes", "profiles", profile);
-  return existsSync(dir) ? dir : null;
+  for (const root of roots) {
+    const dir = path.join(root, profile);
+    if (existsSync(dir)) return dir;
+  }
+  return null;
+}
+
+export function hermesRuntimeEnv(baseEnv: NodeJS.ProcessEnv, cwd: string, requestedProfile: string, home = homedir()): { env: NodeJS.ProcessEnv; profile: string } {
+  const env: NodeJS.ProcessEnv = { ...baseEnv, PWD: cwd };
+  delete env.NODE_OPTIONS;
+  delete env.HERMES_HOME;
+  delete env.HERMES_PROFILE;
+  const profileHome = hermesProfileHome(requestedProfile, home, hermesProfileRoots(home, env));
+  const profile = requestedProfile === "default" || profileHome ? requestedProfile : "default";
+  if (profileHome) {
+    env.HERMES_HOME = profileHome;
+    env.HERMES_PROFILE = profile;
+  }
+  return { env, profile };
 }
 
 class HermesRun {
@@ -63,13 +84,12 @@ class HermesRun {
   private sessionId: string | null;
 
   constructor(private readonly opts: StartOpts, private readonly cb: RuntimeCallbacks) {
-    this.env = { ...opts.env, PWD: opts.cwd };
-    delete this.env.NODE_OPTIONS;
-    this.profile = hermesProfile(opts.model, opts.runtimeConfig);
-    const profileHome = hermesProfileHome(this.profile);
-    if (profileHome) {
-      this.env.HERMES_HOME = profileHome;
-      this.env.HERMES_PROFILE = this.profile;
+    const requestedProfile = hermesProfile(opts.model, opts.runtimeConfig);
+    const resolved = hermesRuntimeEnv(opts.env, opts.cwd, requestedProfile);
+    this.env = resolved.env;
+    this.profile = resolved.profile;
+    if (requestedProfile !== "default" && this.profile === "default") {
+      cb.log.warn("hermes profile not found; using default profile", { profile: requestedProfile });
     }
     this.sessionId = opts.sessionId ?? null;
     if (this.sessionId) cb.onSession(this.sessionId);
@@ -168,6 +188,7 @@ class HermesRun {
 export const hermesRuntime: Runtime = {
   name: "hermes",
   experimental: true,
+  oneShotWake: true,
   start(opts: StartOpts, cb: RuntimeCallbacks): RuntimeSession {
     const run = new HermesRun(opts, cb);
     return { deliver: (text) => run.enqueue(text), stop: () => run.stop() };

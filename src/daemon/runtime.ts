@@ -35,5 +35,6 @@ export interface RuntimeSession {
 export interface Runtime {
   name: string;
   experimental?: boolean;
+  oneShotWake?: boolean;          // runtime needs each wake to be a concrete check/send turn
   start(opts: StartOpts, cb: RuntimeCallbacks): RuntimeSession;
 }
