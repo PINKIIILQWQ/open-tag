@@ -28,6 +28,9 @@ function assertDecl(selector: string, prop: string, value: string): void {
 }
 
 test("chat Markdown styles cover rich GFM elements beyond paragraphs and code", () => {
+  assert.match(css, /--channel-mention:#e5effd/);
+  assert.match(css, /--thread-mention:#e5dcf0/);
+  assert.match(css, /--task-mention:#efd0cb/);
   assertDecl(".md a", "color", "var\\(--tint-blue-ink\\)");
   assertDecl(".md p + p", "margin-top", "\\.75em");
   assertDecl(".md code", "border-radius", "4px");
@@ -80,17 +83,17 @@ test("chat Markdown styles cover rich GFM elements beyond paragraphs and code", 
   assertDecl(".md li.task-list-item:has(input[type=\"checkbox\"]:checked)", "text-decoration-color", "var\\(--done-text\\)");
   assertDecl(".mention", "color", "var\\(--ink-2\\)");
   assertDecl(".mention", "text-decoration", "none");
-  assertDecl(".mbody .ref-chan", "background", "var\\(--channel-mention\\)");
-  assertDecl(".mbody .ref-chan", "color", "var\\(--ink-2\\)");
-  assertDecl(".mbody .ref-chan", "text-decoration", "none");
-  assertDecl(".mbody .ref-thread", "background", "var\\(--thread-mention\\)");
-  assertDecl(".mbody .ref-thread", "color", "var\\(--ink-2\\)");
-  assertDecl(".mbody .ref-thread", "text-decoration", "none");
-  assertDecl(".mbody .ref-task", "background", "var\\(--task-mention\\)");
-  assertDecl(".mbody .ref-task", "color", "var\\(--ink-2\\)");
-  assertDecl(".mbody .ref-task", "text-decoration", "none");
-  assertDecl(".mbody .ref-thread:hover", "background", "var\\(--thread-mention-strong\\)");
-  assertDecl(".mbody .ref-task:hover", "background", "var\\(--task-mention-strong\\)");
+  assertDecl(".md .ref-chan", "background", "var\\(--channel-mention\\)");
+  assertDecl(".md .ref-chan", "color", "var\\(--ink-2\\)");
+  assertDecl(".md .ref-chan", "text-decoration", "none");
+  assertDecl(".md .ref-thread", "background", "var\\(--thread-mention\\)");
+  assertDecl(".md .ref-thread", "color", "var\\(--ink-2\\)");
+  assertDecl(".md .ref-thread", "text-decoration", "none");
+  assertDecl(".md .ref-task", "background", "var\\(--task-mention\\)");
+  assertDecl(".md .ref-task", "color", "var\\(--ink-2\\)");
+  assertDecl(".md .ref-task", "text-decoration", "none");
+  assertDecl(".md .ref-thread:hover", "background", "var\\(--thread-mention-strong\\)");
+  assertDecl(".md .ref-task:hover", "background", "var\\(--task-mention-strong\\)");
 });
 
 test("Workspace Markdown preview keeps parity with chat for rich GFM elements", () => {
