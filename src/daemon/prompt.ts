@@ -129,8 +129,8 @@ export const STARTUP_NUDGE =
 /** Lightweight nudge sent to the agent on resume wakeup. */
 export const RESUME_NUDGE =
   "You were woken because new messages may be waiting. Run `open-tag message check` to read them, handle them, reply with `open-tag message send`, then stop.";
-/** One-shot runtimes such as Hermes need the wakeup itself to be a concrete instruction, not only a generic inbox notice. */
-export const DELIVERY_NUDGE =
+/** One-shot runtimes need the wakeup itself to be a concrete instruction, not only a generic inbox notice. */
+export const ONE_SHOT_WAKE_NUDGE =
   "You were woken by a new open-tag delivery. FIRST run `open-tag message check` now, handle the pending message(s), and send exactly one reply with `open-tag message send`. Do not end this turn with stdout only; only `open-tag message send` reaches the human.";
 /** Stdin notification delivered while the agent is busy. Structured, content-free: metadata only — message bodies are retrieved via `open-tag message check`. */
 export function inboxNotice(o: { count: number; from: string; targetName: string; firstShort?: string; latestShort?: string; isTask?: boolean; isDm?: boolean; changedTargets?: number; mentioned?: boolean }): string {
