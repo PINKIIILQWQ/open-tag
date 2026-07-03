@@ -2,6 +2,7 @@
   --canvas:#f5f5f5;--canvas-soft:#fafafa;--surface:#fff;--surface-strong:#f0efed;
   --ink:#0c0a09;--ink-2:#292524;--body:#4e4e4e;--muted:#777169;--muted-soft:#a8a29e;
   --hair:#e7e5e4;--hair-strong:#d6d3d1;--success:#16a34a;--amber:#b9770e;
+  --status-blue:#92B6FF;--status-green:hsl(137 36% 64%);--status-orange:hsl(46 66% 50%);--status-red:#c36a6a;--status-badge-bg:rgba(240,239,237,.4);
   --g-mint:#a7e5d3;--g-lav:#c8b8e0;--g-sky:#a8c8e8;--g-peach:#f4c5a8;
   /* sidecar: UI functional colors not covered by DESIGN.md primary palette, centralized as tokens to prevent scattering (error aligned with DESIGN.md semantic-error) */
   --error:#dc2626;--error-soft:#fef2f2;--error-line:#fecaca;
@@ -99,7 +100,9 @@ button{font-family:inherit}
 .dm-pick{margin:0 0 4px;padding:4px;border:1px solid var(--hair);border-radius:8px;background:var(--surface)}
 .inline-create{width:100%;font-size:15px;padding:6px 10px;border:1px solid var(--hair-strong);border-radius:8px;outline:none;margin-bottom:6px;background:var(--canvas)}
 .dot{width:8px;height:8px;border-radius:50%;background:var(--muted-soft);flex:none}
-.dot.online,.dot.active{background:var(--success)}.dot.working,.dot.thinking{background:var(--amber)}.dot.sleeping{background:var(--g-sky)}.dot.offline,.dot.inactive{background:var(--muted-soft)}.dot.error{background:var(--error)}
+.dot.online,.dot.active{background:var(--status-green)}.dot.working,.dot.thinking{background:var(--status-orange)}.dot.sleeping{background:var(--status-blue)}.dot.offline,.dot.inactive{background:var(--muted-soft)}.dot.error{background:var(--status-red)}
+.dot.working:not(.live-bar__pip){position:relative}
+.dot.working:not(.live-bar__pip)::after{content:"";position:absolute;inset:0;border-radius:50%;background-color:inherit;animation:lb-ping 1.9s cubic-bezier(0,0,.2,1) infinite}
 .av{width:20px;height:20px;border-radius:50%;flex:none;display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:600;color:var(--ink)}
 .av.agent{background:radial-gradient(circle at 30% 28%,var(--g-mint),var(--g-lav) 70%,var(--g-sky))}
 .av.human{background:var(--surface-strong);color:var(--muted)}
@@ -530,7 +533,12 @@ aside.traj-col h2{position:relative;font-size:12px;font-weight:600;letter-spacin
 .member-badge{font-size:12px;color:var(--muted-soft);font-weight:400;flex:none}
 .msg-role{font-size:13px;color:var(--muted-soft);font-weight:400;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0;flex:0 1 auto}
 .av-status{position:absolute;bottom:-1px;right:-1px;width:10px;height:10px;border-radius:50%;border:2px solid var(--surface);background:var(--muted-soft)}
-.av-status.online,.av-status.active{background:var(--success)} .av-status.working,.av-status.thinking{background:var(--amber)}
+.av-status.online,.av-status.active{background:var(--status-green)}.av-status.working,.av-status.thinking{background:var(--status-orange)}.av-status.sleeping{background:var(--status-blue)}.av-status.offline,.av-status.inactive{background:var(--muted-soft)}.av-status.error{background:var(--status-red)}
+.av-status.working::after{content:"";position:absolute;inset:0;border-radius:50%;background-color:inherit;animation:lb-ping 1.9s cubic-bezier(0,0,.2,1) infinite}
+.msg-activity.online,.msg-activity.active{color:var(--status-green);background:var(--status-badge-bg)}
+.msg-activity.working,.msg-activity.thinking{color:var(--status-orange);background:var(--status-badge-bg)}
+.msg-activity.sleeping{color:var(--status-blue);background:var(--status-badge-bg)}
+.msg-activity.error{color:var(--status-red);background:var(--status-badge-bg)}
 .msg-meta{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-top:5px}
 /* Message row task badge: pill shape + status-based color (colors use DESIGN.md tokens, consistent with TaskBoard status colors) */
 .task-pill-wrap{position:relative;display:inline-flex} /* task badge status menu anchor (click badge = change status) */
@@ -768,7 +776,7 @@ aside.traj-col.profile-mode .scroll{flex:1;min-height:0;overflow:auto;margin:0 -
 .live-bar__pop-name{font-size:13px;font-weight:600;color:var(--ink);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .live-bar__pop-detail{font-size:11px;color:var(--muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 @keyframes lb-ping{0%{transform:scale(1);opacity:.55}70%,100%{transform:scale(2.4);opacity:0}}
-@media (prefers-reduced-motion:reduce){.live-bar__pip::after{animation:none;opacity:0}}
+@media (prefers-reduced-motion:reduce){.live-bar__pip::after,.dot.working:not(.live-bar__pip)::after,.av-status.working::after{animation:none;opacity:0}}
 
 /* ── Message enter animation: new socket-pushed messages slide in from opacity:0 + translateY(6px).
    Only transform/opacity are animated (layout-safe). Stagger delay set per-element via --msg-delay. ── */
