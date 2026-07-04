@@ -58,6 +58,14 @@ test("chat Markdown styles cover rich GFM elements beyond paragraphs and code", 
   assertDecl(".md blockquote", "border-left", "4px solid var\\(--hair-strong\\)");
   assertDecl(".md blockquote", "padding", "8px 18px");
   assertDecl(".md blockquote", "color", "var\\(--quote-text\\)");
+  assertDecl(".md blockquote.github-alert", "border-left-color", "var\\(--alert-color\\)");
+  assertDecl(".md blockquote.github-alert::before", "content", "attr\\(data-alert\\)");
+  assertDecl(".md blockquote.github-alert::before", "text-transform", "uppercase");
+  assertDecl(".md blockquote.github-alert-note", "--alert-color", "var\\(--alert-note\\)");
+  assertDecl(".md blockquote.github-alert-tip", "--alert-color", "var\\(--alert-tip\\)");
+  assertDecl(".md blockquote.github-alert-important", "--alert-color", "var\\(--alert-important\\)");
+  assertDecl(".md blockquote.github-alert-warning", "--alert-color", "var\\(--alert-warning\\)");
+  assertDecl(".md blockquote.github-alert-caution", "--alert-color", "var\\(--alert-caution\\)");
   assertDecl(".md table", "border-collapse", "collapse");
   assertDecl(".md table", "background", "transparent");
   assertDecl(".md td", "overflow-wrap", "anywhere");
@@ -114,10 +122,11 @@ test("Workspace Markdown preview keeps parity with chat for rich GFM elements", 
   assert.match(messageRenderSrc, /<span className="md-code-lang">\{lang\}<\/span>/);
   assert.match(messageRenderSrc, /navigator\.clipboard\?\.writeText/);
   assert.match(messageRenderSrc, /pre\(\{ children \}\)\s*\{\s*return <CodeBlock>\{children\}<\/CodeBlock>/);
-  assert.match(membersSrc, /import \{ CodeBlock, ColorSwatch, colorValueFromTag, markdownSchema, remarkColorSwatches \} from "\.\.\/messageRender\.tsx"/);
+  assert.match(membersSrc, /import \{ CodeBlock, ColorSwatch, colorValueFromTag, markdownSchema, remarkColorSwatches, remarkGithubAlerts \} from "\.\.\/messageRender\.tsx"/);
   assert.match(messageRenderSrc, /export function remarkColorSwatches/);
+  assert.match(messageRenderSrc, /export function remarkGithubAlerts/);
   assert.match(messageRenderSrc, /tag:color:\$\{encodeURIComponent\(token\)\}/);
-  assert.match(membersSrc, /remarkPlugins=\{\[remarkGfm, remarkBreaks, remarkColorSwatches\]\}/);
+  assert.match(membersSrc, /remarkPlugins=\{\[remarkGfm, remarkBreaks, remarkGithubAlerts, remarkColorSwatches\]\}/);
   assert.match(membersSrc, /rehypePlugins=\{\[\[rehypeSanitize, markdownSchema\]\]\}/);
   assert.match(membersSrc, /ColorSwatch value=\{color\}/);
   assert.match(membersSrc, /pre: \(\{ children \}\) => <CodeBlock>\{children\}<\/CodeBlock>/);
@@ -132,6 +141,7 @@ test("Workspace Markdown preview keeps parity with chat for rich GFM elements", 
   assertDecl(".ws-md blockquote", "border-left", "4px solid var\\(--hair-strong\\)");
   assertDecl(".ws-md blockquote", "padding", "9px 19px");
   assertDecl(".ws-md blockquote", "color", "var\\(--quote-text\\)");
+  assertDecl(".ws-md blockquote.github-alert", "border-left-color", "var\\(--alert-color\\)");
   assertDecl(".ws-md h4", "font-size", "1em");
   assertDecl(".ws-md h4", "margin", "1\\.45em 0 \\.62em");
   assertDecl(".ws-md kbd", "font-family", "var\\(--mono\\)");

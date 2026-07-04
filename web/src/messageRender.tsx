@@ -10,8 +10,21 @@ import remarkGfm from "remark-gfm";
 import remarkBreaks from "remark-breaks";
 import rehypeSanitize, { defaultSchema } from "rehype-sanitize";
 
+const alertTypes = new Set(["note", "tip", "important", "warning", "caution"]);
+
 // sanitize allows only http/https/mailto by default; also allow our internal tag: protocol (token links)
-export const markdownSchema = { ...defaultSchema, protocols: { ...defaultSchema.protocols, href: [...(defaultSchema.protocols?.href ?? ["http", "https", "mailto"]), "tag"] } };
+export const markdownSchema = {
+  ...defaultSchema,
+  protocols: { ...defaultSchema.protocols, href: [...(defaultSchema.protocols?.href ?? ["http", "https", "mailto"]), "tag"] },
+  attributes: {
+    ...defaultSchema.attributes,
+    blockquote: [
+      ...(defaultSchema.attributes?.blockquote ?? []),
+      ["className", "github-alert", "github-alert-note", "github-alert-tip", "github-alert-important", "github-alert-warning", "github-alert-caution"],
+      ["data-alert", "note", "tip", "important", "warning", "caution"],
+    ],
+  },
+};
 
 type NameItem = { name?: string; id?: string };
 type MentionItem = { type?: string; id?: string; name?: string };
@@ -236,13 +249,39 @@ export function remarkColorSwatches() {
   return (tree: any): void => { visit(tree); };
 }
 
+export function remarkGithubAlerts() {
+  const visit = (node: any): void => {
+    if (node.type === "blockquote" && Array.isArray(node.children) && node.children.length) {
+      const first = node.children[0];
+      const firstText = first?.type === "paragraph" && Array.isArray(first.children) && first.children.length === 1 && first.children[0]?.type === "text"
+        ? String(first.children[0].value).trim()
+        : "";
+      const match = firstText.match(/^\[!(NOTE|TIP|IMPORTANT|WARNING|CAUTION)\]$/i);
+      const type = match?.[1]?.toLowerCase();
+      if (type && alertTypes.has(type)) {
+        node.data = {
+          ...(node.data ?? {}),
+          hProperties: {
+            ...(node.data?.hProperties ?? {}),
+            className: ["github-alert", `github-alert-${type}`],
+            "data-alert": type,
+          },
+        };
+        node.children = node.children.slice(1);
+      }
+    }
+    if (Array.isArray(node.children)) node.children.forEach(visit);
+  };
+  return (tree: any): void => { visit(tree); };
+}
+
 export function MessageContent({ content, mentions, channels, nav }: { content: string; mentions: MentionItem[]; channels: NameItem[]; nav: Nav }) {
   const src = useMemo(() => processMessageContent(content, { mentions, channels }), [content, mentions, channels]);
   return (
     <div className="md">
       <ReactMarkdown
         urlTransform={(u) => (u.startsWith("tag:") ? u : defaultUrlTransform(u))}
-        remarkPlugins={[remarkGfm, remarkBreaks, remarkHtmlAsText, remarkColorSwatches]}
+        remarkPlugins={[remarkGfm, remarkBreaks, remarkHtmlAsText, remarkGithubAlerts, remarkColorSwatches]}
         rehypePlugins={[[rehypeSanitize, markdownSchema]]}
         components={{
           pre({ children }) {

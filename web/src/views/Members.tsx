@@ -13,7 +13,7 @@ import { Avatar, AvatarPicker, resolveAvatar } from "../Avatar.tsx";
 import { Select } from "../Select.tsx";
 import { useConfirm, useEscClose } from "../ConfirmModal.tsx";
 import { useToast } from "../toast.tsx";
-import { CodeBlock, ColorSwatch, colorValueFromTag, markdownSchema, remarkColorSwatches } from "../messageRender.tsx";
+import { CodeBlock, ColorSwatch, colorValueFromTag, markdownSchema, remarkColorSwatches, remarkGithubAlerts } from "../messageRender.tsx";
 import i18n from "../i18n";
 
 // Unified agent status label: fine-grained activity (working/thinking/online) takes priority;
@@ -424,7 +424,7 @@ function WorkspaceTab({ id }: { id: string }) {
                   </span>}
                 </div>
                 {isMd && mode === "preview"
-                  ? <div className="ws-md"><ReactMarkdown remarkPlugins={[remarkGfm, remarkBreaks, remarkColorSwatches]} rehypePlugins={[[rehypeSanitize, markdownSchema]]} components={{ a: ({ href, children }) => { const color = colorValueFromTag(href); return color ? <ColorSwatch value={color} /> : <a href={href} target="_blank" rel="noreferrer">{children}</a>; }, pre: ({ children }) => <CodeBlock>{children}</CodeBlock> }}>{sel.content || ""}</ReactMarkdown></div>
+                  ? <div className="ws-md"><ReactMarkdown remarkPlugins={[remarkGfm, remarkBreaks, remarkGithubAlerts, remarkColorSwatches]} rehypePlugins={[[rehypeSanitize, markdownSchema]]} components={{ a: ({ href, children }) => { const color = colorValueFromTag(href); return color ? <ColorSwatch value={color} /> : <a href={href} target="_blank" rel="noreferrer">{children}</a>; }, pre: ({ children }) => <CodeBlock>{children}</CodeBlock> }}>{sel.content || ""}</ReactMarkdown></div>
                   : <pre className="ws-content">{sel.content}</pre>}
               </>}
       </div>
