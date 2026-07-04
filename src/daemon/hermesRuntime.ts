@@ -43,7 +43,7 @@ export function buildHermesArgs(prompt: string, sessionId?: string | null): stri
   return args;
 }
 
-interface TurnState { sent: boolean; held: boolean; engaged: boolean; target: string | null; }
+interface TurnState { sent: boolean; held: boolean; checked: boolean; engaged: boolean; target: string | null; }
 type BridgeDecision = { ok: true; target: string; content: string } | { ok: false; reason: string };
 interface BridgePostResult { ok: boolean; held?: boolean; sentDraft?: boolean; status?: number; text?: string }
 
@@ -57,13 +57,15 @@ function isMissingHermesSession(stderr: string): boolean {
 }
 
 export function parseHermesTurnEvents(jsonl: string): TurnState {
-  const state: TurnState = { sent: false, held: false, engaged: false, target: null };
+  const state: TurnState = { sent: false, held: false, checked: false, engaged: false, target: null };
   for (const line of jsonl.split("\n")) {
     if (!line.trim()) continue;
     let evt: any;
     try { evt = JSON.parse(line); } catch { continue; }
     if (evt.type === "send") state.sent = true;
     if (evt.type === "held") state.held = true;
+    if (evt.type === "check") state.checked = true;
+    if (evt.type === "read") state.checked = true;
     if ((evt.type === "check" || evt.type === "read") && typeof evt.target === "string" && evt.target.trim()) {
       state.engaged = true;
       state.target = evt.target.trim();
@@ -90,6 +92,7 @@ function cleanHermesStdout(stdout: string): BridgeDecision {
 export function hermesBridgeDecision(stdout: string, state: TurnState): BridgeDecision {
   if (state.sent) return { ok: false, reason: "already-sent" };
   if (state.held) return { ok: false, reason: "already-held" };
+  if (state.checked && !state.target) return { ok: false, reason: "no-new-messages" };
   if (!state.engaged || !state.target) return { ok: false, reason: "no-open-tag-read" };
   if (!/^(#|dm:|thread:)/.test(state.target)) return { ok: false, reason: "invalid-target" };
   const cleaned = cleanHermesStdout(stdout);
@@ -250,13 +253,14 @@ class HermesRun {
   }
 
   private async bridgeFinalResponse(turnFile: string, stdout: string): Promise<boolean | null> {
-    let state: TurnState = { sent: false, held: false, engaged: false, target: null };
+    let state: TurnState = { sent: false, held: false, checked: false, engaged: false, target: null };
     try { state = parseHermesTurnEvents(await readFile(turnFile, "utf8")); }
     catch { /* no CLI side-channel events recorded */ }
     finally { try { await unlink(turnFile); } catch { /* best-effort cleanup */ } }
     const decision = hermesBridgeDecision(stdout, state);
     if (!decision.ok) {
-      if (stdout.trim() && decision.reason !== "already-sent") {
+      const benign = decision.reason === "already-sent" || decision.reason === "already-held" || decision.reason === "no-new-messages" || decision.reason === "cli-output" || decision.reason === "empty-stdout";
+      if (stdout.trim() && !benign) {
         this.cb.log.warn("hermes final response not bridged", { reason: decision.reason });
         this.cb.onActivity("error", `hermes reply not sent (${decision.reason})`);
         return false;

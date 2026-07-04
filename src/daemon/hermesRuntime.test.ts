@@ -98,7 +98,7 @@ test("Hermes runtime resolves profiles from HERMES_PROFILE_DIR as well as ~/.her
 
 test("Hermes final response bridge requires check/read evidence and filters unsafe stdout", () => {
   const checked = parseHermesTurnEvents(JSON.stringify({ type: "check", target: "dm:@User", count: 1 }));
-  assert.deepEqual(checked, { sent: false, held: false, engaged: true, target: "dm:@User" });
+  assert.deepEqual(checked, { sent: false, held: false, checked: true, engaged: true, target: "dm:@User" });
   assert.deepEqual(hermesBridgeDecision("⚠ scanner warning\n\nI handled that.", checked), {
     ok: true,
     target: "dm:@User",
@@ -108,6 +108,10 @@ test("Hermes final response bridge requires check/read evidence and filters unsa
   assert.deepEqual(hermesBridgeDecision("I handled that.", parseHermesTurnEvents("")), {
     ok: false,
     reason: "no-open-tag-read",
+  });
+  assert.deepEqual(hermesBridgeDecision("没有新消息。", parseHermesTurnEvents(JSON.stringify({ type: "check", count: 0 }))), {
+    ok: false,
+    reason: "no-new-messages",
   });
   assert.equal(hermesBridgeDecision("Error: provider rejected the request", checked).ok, false);
   assert.equal(hermesBridgeDecision("┊ review diff\na/MEMORY.md → b/MEMORY.md\n@@ -1 +1", checked).ok, false);

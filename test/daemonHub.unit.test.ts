@@ -5,7 +5,7 @@
 // Run: npx tsx --test test/daemonHub.unit.test.ts
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { registerDaemon, unregisterDaemon, registerMachineConn, unregisterMachineConn, broadcastToDaemons } from "../src/server/daemonHub.js";
+import { registerDaemon, unregisterDaemon, registerMachineConn, unregisterMachineConn, broadcastToDaemons, isMachineConnected, sendToMachine } from "../src/server/daemonHub.js";
 
 // Minimal fake ws: readyState=OPEN(1), counts sends + close.
 function fakeWs(): any {
@@ -46,4 +46,18 @@ test("multi-tenant: broadcast does not cross servers", () => {
   assert.equal(wsB.sends, 0, "server B's daemon must not receive server A's broadcast");
   unregisterDaemon(wsA); unregisterMachineConn(wsA);
   unregisterDaemon(wsB); unregisterMachineConn(wsB);
+});
+
+test("sendToMachine targets only the selected machine connection", () => {
+  const sid = "s-target-" + Math.random().toString(36).slice(2);
+  const wsA = fakeWs(), wsB = fakeWs();
+  registerDaemon(wsA, sid); registerDaemon(wsB, sid);
+  registerMachineConn("m-target-a", wsA); registerMachineConn("m-target-b", wsB);
+  assert.equal(isMachineConnected("m-target-a"), true);
+  assert.equal(sendToMachine("m-target-a", { type: "agent:start", agentId: "a1" }), true);
+  assert.equal(wsA.sends, 1);
+  assert.equal(wsB.sends, 0);
+  unregisterDaemon(wsA); unregisterMachineConn(wsA);
+  unregisterDaemon(wsB); unregisterMachineConn(wsB);
+  assert.equal(sendToMachine("m-target-a", { type: "agent:start", agentId: "a1" }), false);
 });

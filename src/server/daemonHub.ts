@@ -23,6 +23,15 @@ export function registerMachineConn(machineId: string, ws: WebSocket): void {
 }
 export function unregisterMachineConn(ws: WebSocket): void { for (const [mid, w] of machineConns) if (w === ws) machineConns.delete(mid); }
 export function isCurrentMachineConn(machineId: string, ws: WebSocket): boolean { return machineConns.get(machineId) === ws; }
+export function isMachineConnected(machineId: string): boolean {
+  const ws = machineConns.get(machineId);
+  return !!ws && ws.readyState === 1;
+}
+export function sendToMachine(machineId: string, msg: unknown): boolean {
+  const ws = machineConns.get(machineId);
+  if (!ws || ws.readyState !== 1) return false;
+  try { ws.send(JSON.stringify(msg)); return true; } catch { return false; }
+}
 export function daemonCount(serverId: string): number {
   let n = 0; for (const sid of daemons.values()) if (sid === serverId) n++; return n;
 }
