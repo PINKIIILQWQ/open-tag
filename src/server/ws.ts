@@ -54,6 +54,10 @@ async function onDaemon(ws: WebSocket, key: string): Promise<void> {
         await publish(serverId!, { type: "trajectory", agentId: msg.agentId, name: a?.name, entries: msg.entries ?? [] });
         for (const e of msg.entries ?? []) await logActivity(serverId!, msg.agentId, e); // persist to the activity log
       }
+      else if (msg.type === "agent:reply" && msg.agentId && msg.channelId && msg.streamId) {
+        const a = (await db.select().from(schema.agents).where(eq(schema.agents.id, msg.agentId)))[0];
+        await publish(serverId!, { type: "agent:reply", agentId: msg.agentId, channelId: msg.channelId, streamId: msg.streamId, name: msg.name ?? a?.displayName ?? a?.name, op: msg.op, text: msg.text ?? "" });
+      }
       else if (msg.type === "pong" && machineId) {
         // Heartbeat: the daemon replies pong to our 30s ping. Keep lastHeartbeat fresh so the
         // liveness sweeper never offlines a live machine; if the sweeper raced ahead and offlined

@@ -317,6 +317,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
           dispatch({ type: "agent", id: p.agentId, name: p.name, activity: p.activity, status: p.status, detail: p.detail });
         }
       });
+      sock.on("agent:reply", (p: any) => dispatch({ type: "agent:reply", ...p }));
       sock.on("agent:created", () => reload());
       sock.on("agent:deleted", () => reload());
       // Real-time: new DM / channel membership change → reload lists + join the new channel room

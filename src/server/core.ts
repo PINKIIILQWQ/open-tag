@@ -174,6 +174,10 @@ export function serializeMsg(msg: typeof schema.messages.$inferSelect, mentions:
   };
 }
 
+export function agentReplyStreamId(messageId: string, agentId: string): string {
+  return `${messageId}:${agentId}`;
+}
+
 async function publishThreadUpdated(
   serverId: string,
   ch: typeof schema.channels.$inferSelect | undefined,
@@ -419,9 +423,12 @@ export async function createMessage(opts: {
       if (target.reason !== "agent not found") await markAgentUnavailable(opts.serverId, mem.id, target.reason);
       continue;
     }
+    const replyStreamId = agentReplyStreamId(msg!.id, mem.id);
+    await publish(opts.serverId, { type: "agent:reply", agentId: mem.id, channelId: opts.channelId, streamId: replyStreamId, name: mem.displayName || mem.name, triggerMessageId: msg!.id, op: "start" });
     const startSent = sendToMachine(target.machineId, { type: "agent:start", agentId: mem.id, config: target.cfg });
-    const deliverSent = startSent && sendToMachine(target.machineId, { type: "agent:deliver", agentId: mem.id, seq, from: opts.senderName, target: opts.channelId, targetName, msgShort, isTask: !!opts.asTask, message: { content: opts.content }, mentioned });
+    const deliverSent = startSent && sendToMachine(target.machineId, { type: "agent:deliver", agentId: mem.id, seq, from: opts.senderName, target: opts.channelId, targetName, msgShort, isTask: !!opts.asTask, message: { content: opts.content }, mentioned, streamId: replyStreamId });
     if (!deliverSent) {
+      await publish(opts.serverId, { type: "agent:reply", agentId: mem.id, channelId: opts.channelId, streamId: replyStreamId, name: mem.displayName || mem.name, op: "error", text: "machine offline" });
       await markAgentUnavailable(opts.serverId, mem.id, "machine offline");
       continue;
     }

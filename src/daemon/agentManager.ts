@@ -21,11 +21,12 @@ export interface AgentConfig {
   model?: string; runtime?: string; runtimeConfig?: Record<string, unknown> | null; sessionId?: string;
   serverUrl: string; serverId: string; agentId: string; agentToken?: string; // per-agent token (slice10); re-sent start for a running agent may omit it (daemon ignores)
 }
-interface DeliverBuf { count: number; from: string; target: string; targetName: string; firstShort: string; latestShort: string; isTask: boolean; mentioned: boolean; targets: Set<string>; timer: ReturnType<typeof setTimeout>; }
-export interface DeliverMeta { targetName?: string; msgShort?: string; isTask?: boolean; }
+interface DeliverBuf { count: number; from: string; target: string; targetName: string; firstShort: string; latestShort: string; isTask: boolean; mentioned: boolean; targets: Set<string>; timer: ReturnType<typeof setTimeout>; streamId?: string; }
+export interface DeliverMeta { targetName?: string; msgShort?: string; isTask?: boolean; streamId?: string; }
 interface Running { session: RuntimeSession; config: AgentConfig; sessionId: string | null; idleTimer?: ReturnType<typeof setTimeout>; deliverBuf?: DeliverBuf; }
 interface PendingDeliver { from: string; target: string; mentioned: boolean; meta: DeliverMeta; }
 interface PendingDeliverQueue { items: PendingDeliver[]; timer: ReturnType<typeof setTimeout>; }
+interface ActiveReplyPreview { channelId: string; streamId: string; name: string; }
 interface AgentManagerOptions {
   dataDir?: string;
   binDir?: string;
@@ -39,6 +40,8 @@ export class AgentManager {
   private agents = new Map<string, Running>();
   private starting = new Map<string, Promise<void>>();
   private pendingDelivers = new Map<string, PendingDeliverQueue>();
+  private activeReplyPreviews = new Map<string, ActiveReplyPreview>();
+  private replySeq = 0;
   private binDir: string;
   private dataDir: string;
   private deliverDebounceMs: number;
@@ -102,6 +105,33 @@ export class AgentManager {
     r.idleTimer = setTimeout(() => { this.log.info("idle sleep", { agentId, idleMs: IDLE_MS }); this.sleep(agentId); }, IDLE_MS);
   }
 
+  private startReplyPreview(agentId: string, r: Running, channelId: string, streamId?: string): void {
+    const existing = this.activeReplyPreviews.get(agentId);
+    if (existing?.channelId === channelId && (!streamId || existing.streamId === streamId)) return;
+    this.finishReplyPreview(agentId);
+    const preview: ActiveReplyPreview = {
+      channelId,
+      streamId: streamId ?? `${Date.now()}-${++this.replySeq}`,
+      name: r.config.displayName || r.config.name || agentId,
+    };
+    this.activeReplyPreviews.set(agentId, preview);
+    this.send({ type: "agent:reply", agentId, channelId: preview.channelId, streamId: preview.streamId, name: preview.name, op: "start" });
+  }
+
+  private handleReplyPreviewText(agentId: string, text: string): void {
+    if (!text) return;
+    const preview = this.activeReplyPreviews.get(agentId);
+    if (!preview) return;
+    this.send({ type: "agent:reply", agentId, channelId: preview.channelId, streamId: preview.streamId, name: preview.name, op: "delta", text });
+  }
+
+  private finishReplyPreview(agentId: string, op: "done" | "error" = "done"): void {
+    const preview = this.activeReplyPreviews.get(agentId);
+    if (!preview) return;
+    this.send({ type: "agent:reply", agentId, channelId: preview.channelId, streamId: preview.streamId, name: preview.name, op });
+    this.activeReplyPreviews.delete(agentId);
+  }
+
   async start(agentId: string, config: AgentConfig): Promise<void> {
     if (this.agents.has(agentId)) return;
     const existing = this.starting.get(agentId);
@@ -143,7 +173,10 @@ export class AgentManager {
     const cb: RuntimeCallbacks = {
       onSession: (sid) => { running.sessionId = sid; this.send({ type: "agent:session", agentId, sessionId: sid }); },
       onActivity: (activity, detail) => { this.resetIdle(agentId); this.send({ type: "agent:activity", agentId, activity, detail: detail ?? "" }); },
-      onTrajectory: (entries) => this.send({ type: "agent:trajectory", agentId, entries }),
+      onTrajectory: (entries) => {
+        this.send({ type: "agent:trajectory", agentId, entries });
+        for (const e of entries) if (!e.toolName && e.text) this.handleReplyPreviewText(agentId, e.text);
+      },
       onExit: (code) => {
         this.log.info("agent exited", { agentId, code });
         if (!this.agents.has(agentId)) return; // intentional stop/sleep/reset already called teardown (removed from map) — they sent their own status, don't overwrite
@@ -151,6 +184,7 @@ export class AgentManager {
         // Process died on its own (not intentionally stopped): keep status=sleeping (session preserved, @ can --resume to recover);
         // Non-zero exit code (crash/signal kill) → activity=error to surface the failure; clean exit → sleeping.
         const crashed = code !== 0;
+        this.finishReplyPreview(agentId, crashed ? "error" : "done");
         this.send({ type: "agent:status", agentId, status: "sleeping" });
         this.send({ type: "agent:activity", agentId, activity: crashed ? "error" : "sleeping", detail: crashed ? `crashed (exit ${code ?? "signal"})` : "" });
       },
@@ -173,6 +207,8 @@ export class AgentManager {
     this.log.info("agent started", { agentId, runtime: runtime.name, model: config.model ?? "(default)", resume: !!config.sessionId, experimental: runtime.experimental ?? false });
     this.resetIdle(agentId);
     if (useOneShotWakeNudge) {
+      const latest = this.pendingDelivers.get(agentId)?.items.at(-1);
+      if (latest) this.startReplyPreview(agentId, running, latest.target, latest.meta.streamId);
       this.clearPendingDeliver(agentId);
       this.log.debug("pending deliver consumed by one-shot wake nudge", { agentId, runtime: runtime.name, count: pendingDeliveryCount });
     } else {
@@ -225,9 +261,10 @@ export class AgentManager {
     const b = r.deliverBuf;
     if (b) { // accumulate: count++, update latest, keep first unchanged, union target set
       clearTimeout(b.timer); b.count++; b.from = from; b.target = target; b.targetName = tname; b.latestShort = short;
-      b.isTask = b.isTask || !!meta.isTask; b.mentioned = b.mentioned || mentioned; b.targets.add(tname);
+      b.isTask = b.isTask || !!meta.isTask; b.mentioned = b.mentioned || mentioned; b.targets.add(tname); b.streamId = b.streamId ?? meta.streamId;
     }
-    const buf: DeliverBuf = b ?? { count: 1, from, target, targetName: tname, firstShort: short, latestShort: short, isTask: !!meta.isTask, mentioned, targets: new Set([tname]), timer: undefined as any };
+    const buf: DeliverBuf = b ?? { count: 1, from, target, targetName: tname, firstShort: short, latestShort: short, isTask: !!meta.isTask, mentioned, targets: new Set([tname]), timer: undefined as any, streamId: meta.streamId };
+    this.startReplyPreview(agentId, r, target, buf.streamId);
     buf.timer = setTimeout(() => {
       r.deliverBuf = undefined;
       const note = inboxNotice({ count: buf.count, from: buf.from, targetName: buf.targetName, firstShort: buf.firstShort, latestShort: buf.latestShort, isTask: buf.isTask, isDm: buf.targetName.startsWith("dm:"), changedTargets: buf.targets.size, mentioned: buf.mentioned });
