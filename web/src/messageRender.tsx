@@ -249,25 +249,70 @@ export function remarkColorSwatches() {
   return (tree: any): void => { visit(tree); };
 }
 
+function splitCompactAlertText(node: any): any[] {
+  const value = String(node.value ?? "");
+  const parts = value.split(/[ \t]+>[ \t]+/);
+  if (parts.length === 1) return value ? [node] : [];
+  const out: any[] = [];
+  for (const part of parts) {
+    if (!part) continue;
+    if (out.length) out.push({ type: "break" });
+    out.push({ ...node, value: part });
+  }
+  return out;
+}
+
+function alertParagraphAfterMarker(paragraph: any): { type: string; paragraph: any | null } | null {
+  if (paragraph?.type !== "paragraph" || !Array.isArray(paragraph.children) || !paragraph.children.length) return null;
+  const [first, ...rest] = paragraph.children;
+  if (first?.type !== "text") return null;
+
+  const value = String(first.value ?? "");
+  const match = value.match(/^\s*\[!(NOTE|TIP|IMPORTANT|WARNING|CAUTION)\]([\s\S]*)$/i);
+  const type = match?.[1]?.toLowerCase();
+  if (!type || !alertTypes.has(type)) return null;
+
+  const afterMarker = match?.[2] ?? "";
+  if (afterMarker && !/^[ \t]*(?:$|\n|>\s*)/.test(afterMarker)) return null;
+
+  const remainingFirstText = afterMarker.replace(/^[ \t]*(?:\n|>\s*)?/, "");
+  const nextChildren = remainingFirstText ? [{ ...first, value: remainingFirstText }, ...rest] : rest;
+  const children: any[] = [];
+  for (const child of nextChildren) {
+    if (child?.type === "break" && children.length === 0) continue;
+    if (child?.type === "text") {
+      const value = String(child.value ?? "").replace(/^[ \t]+/, "");
+      const startsWithCompactBreak = /^>[ \t]+/.test(value);
+      if (startsWithCompactBreak && children.length) children.push({ type: "break" });
+      children.push(...splitCompactAlertText({ ...child, value: value.replace(/^>[ \t]+/, "") }));
+    } else {
+      children.push(child);
+    }
+  }
+  while (children[0]?.type === "break") children.shift();
+  while (children.at(-1)?.type === "break") children.pop();
+
+  return {
+    type,
+    paragraph: children.length ? { ...paragraph, children } : null,
+  };
+}
+
 export function remarkGithubAlerts() {
   const visit = (node: any): void => {
     if (node.type === "blockquote" && Array.isArray(node.children) && node.children.length) {
       const first = node.children[0];
-      const firstText = first?.type === "paragraph" && Array.isArray(first.children) && first.children.length === 1 && first.children[0]?.type === "text"
-        ? String(first.children[0].value).trim()
-        : "";
-      const match = firstText.match(/^\[!(NOTE|TIP|IMPORTANT|WARNING|CAUTION)\]$/i);
-      const type = match?.[1]?.toLowerCase();
-      if (type && alertTypes.has(type)) {
+      const alert = alertParagraphAfterMarker(first);
+      if (alert) {
         node.data = {
           ...(node.data ?? {}),
           hProperties: {
             ...(node.data?.hProperties ?? {}),
-            className: ["github-alert", `github-alert-${type}`],
-            "data-alert": type,
+            className: ["github-alert", `github-alert-${alert.type}`],
+            "data-alert": alert.type,
           },
         };
-        node.children = node.children.slice(1);
+        node.children = alert.paragraph ? [alert.paragraph, ...node.children.slice(1)] : node.children.slice(1);
       }
     }
     if (Array.isArray(node.children)) node.children.forEach(visit);
