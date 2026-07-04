@@ -288,12 +288,8 @@ main.content-col > .composer{position:absolute;left:0;right:var(--scrollbar-gutt
    avatar/text clear the inset accent bar instead of sitting flush on it — the bar otherwise pressed right
    against the avatar's left edge. (Keep the 6px bottom margin so the content doesn't hug the card floor.) */
 .showcase-case.open .msg{margin:0 0 6px;padding-left:18px}
-/* The open case reuses Chat's .msg, whose :hover paints an opaque, *lighter* (canvas-soft) rounded block.
-   On the open case's darker (surface-strong) fill that block reads as a reversed, half-height highlight AND,
-   being opaque, clips the lower part of the inset accent bar — leaving a stray bar segment above the avatar.
-   Inside an open case the whole case already is the highlight, so suppress the per-message hover fill: the
-   fill stays uniform and the accent bar runs full-height. Scoped to .showcase-case.open — global .msg:hover
-   (real Chat channels) is untouched. */
+/* The open case already supplies the filled highlight and accent bar. Keep its nested message hover transparent
+   so the card remains visually uniform while the global .msg:hover uses the newer border-only hover contract. */
 .showcase-case.open .msg:hover{background:transparent}
 .wake-hint{display:flex;align-items:center;gap:6px;width:100%;max-width:calc(var(--read-measure) + 72px);margin:0 auto;padding:0 2px 9px;font-size:12px;color:var(--muted);line-height:1.4}
 .wake-hint svg{color:var(--g-sky);flex:0 0 auto}
