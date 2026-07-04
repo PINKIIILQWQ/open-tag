@@ -4,7 +4,7 @@
 // Raw HTML in a body is shown as LITERAL TEXT (remarkHtmlAsText), never rendered and never dropped —
 // react-markdown's default would silently swallow it, turning an all-HTML message into an empty bubble.
 import { useMemo, useState, type ReactNode } from "react";
-import { Check, Copy } from "lucide-react";
+import { Check, Copy, Info, Lightbulb, MessageSquareWarning, OctagonAlert, TriangleAlert, type LucideIcon } from "lucide-react";
 import ReactMarkdown, { defaultUrlTransform } from "react-markdown";
 import remarkGfm from "remark-gfm";
 import remarkBreaks from "remark-breaks";
@@ -24,6 +24,14 @@ export const markdownSchema = {
       ["data-alert", "note", "tip", "important", "warning", "caution"],
     ],
   },
+};
+
+const alertConfig: Record<string, { label: string; Icon: LucideIcon }> = {
+  note: { label: "Note", Icon: Info },
+  tip: { label: "Tip", Icon: Lightbulb },
+  important: { label: "Important", Icon: MessageSquareWarning },
+  warning: { label: "Warning", Icon: TriangleAlert },
+  caution: { label: "Caution", Icon: OctagonAlert },
 };
 
 type NameItem = { name?: string; id?: string };
@@ -132,6 +140,22 @@ export function ColorSwatch({ value }: { value: string }) {
       <span className="color-token-text">{value}</span>
       <span className="color-chip" style={{ backgroundColor: value }} aria-hidden="true" />
     </span>
+  );
+}
+
+export function GithubAlertBlockquote({ children, ...props }: { children: ReactNode; [key: string]: unknown }) {
+  const type = String(props["data-alert"] ?? "").toLowerCase();
+  const config = alertConfig[type];
+  if (!config) return <blockquote {...props}>{children}</blockquote>;
+  const Icon = config.Icon;
+  return (
+    <blockquote {...props}>
+      <div className="github-alert-title">
+        <Icon size={16} strokeWidth={2.1} aria-hidden="true" />
+        <span>{config.label}</span>
+      </div>
+      {children}
+    </blockquote>
   );
 }
 
@@ -329,6 +353,9 @@ export function MessageContent({ content, mentions, channels, nav }: { content: 
         remarkPlugins={[remarkGfm, remarkBreaks, remarkHtmlAsText, remarkGithubAlerts, remarkColorSwatches]}
         rehypePlugins={[[rehypeSanitize, markdownSchema]]}
         components={{
+          blockquote({ children, ...props }) {
+            return <GithubAlertBlockquote {...props}>{children}</GithubAlertBlockquote>;
+          },
           pre({ children }) {
             return <CodeBlock>{children}</CodeBlock>;
           },
