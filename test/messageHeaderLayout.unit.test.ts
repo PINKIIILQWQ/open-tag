@@ -97,7 +97,7 @@ test("generic working status dots reuse the live pulse without animating thinkin
 test("message hover uses a subtle border instead of a filled background", () => {
   const base = ruleBody(".msg");
   assert.match(base, /max-width\s*:\s*calc\(var\(--read-measure\) \+ 72px\)/, `message row should center avatar and body as one readable block: ${base}`);
-  assert.match(base, /margin\s*:\s*0 auto 12px\b/, `message row should stay compact now that the reaction footer is restored: ${base}`);
+  assert.match(base, /margin\s*:\s*0 auto 10px\b/, `message row should stay compact now that the reaction footer is restored: ${base}`);
   assert.match(base, /padding\s*:\s*7px 12px 5px\b/, `message row should keep the footer close to the last text line: ${base}`);
   assert.match(base, /transition\s*:\s*background \.1s,box-shadow \.5s ease\b/, `message card shadow should ease softly: ${base}`);
   assert.match(base, /box-shadow\s*:\s*none\b/, `message card shadow should appear with the hover border, not at rest: ${base}`);
