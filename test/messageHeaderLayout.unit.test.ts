@@ -26,7 +26,10 @@ test("member badge renders on a second header line while agent status text remai
 test("message avatar is the positioning anchor for the live status dot", () => {
   const body = ruleBody(".msg-av");
   assert.match(body, /position\s*:\s*relative\b/, `avatar wrapper must anchor .av-status: ${body}`);
-  assert.match(body, /align-self\s*:\s*flex-start\b/, `avatar wrapper must not stretch to message height: ${body}`);
+  assert.match(body, /width\s*:\s*36px\b/, `avatar wrapper should hug the avatar so .av-status overlaps the avatar, not the whole column: ${body}`);
+  assert.match(body, /margin-top\s*:\s*3px\b/, `avatar should sit slightly lower against the two-line message header: ${body}`);
+  assert.match(body, /align-self\s*:\s*start\b/, `avatar wrapper must not stretch to message height: ${body}`);
+  assert.match(body, /justify-self\s*:\s*start\b/, `avatar should stay anchored inside the fixed avatar column: ${body}`);
   assert.match(body, /line-height\s*:\s*0\b/, `avatar wrapper should not add extra inline height: ${body}`);
 });
 
@@ -96,16 +99,30 @@ test("generic working status dots reuse the live pulse without animating thinkin
 
 test("message hover uses a subtle border instead of a filled background", () => {
   const base = ruleBody(".msg");
+  assert.match(base, /display\s*:\s*grid\b/, `message row should use a fixed avatar column plus content column: ${base}`);
+  assert.match(base, /grid-template-columns\s*:\s*44px minmax\(0,1fr\)/, `avatar column should be fixed while content owns the right column: ${base}`);
   assert.match(base, /max-width\s*:\s*calc\(var\(--read-measure\) \+ 72px\)/, `message row should center avatar and body as one readable block: ${base}`);
   assert.match(base, /margin\s*:\s*0 auto 8px\b/, `message row should stay compact now that the reaction footer is restored: ${base}`);
   assert.match(base, /padding\s*:\s*7px 12px 5px\b/, `message row should keep the footer close to the last text line: ${base}`);
-  assert.match(base, /transition\s*:\s*background \.1s,box-shadow \.5s ease\b/, `message card shadow should ease softly: ${base}`);
-  assert.match(base, /box-shadow\s*:\s*none\b/, `message card shadow should appear with the hover border, not at rest: ${base}`);
-  assert.doesNotMatch(base, /inset 0 0 0 \.5px var\(--card-line\)/, `message card border should not be always-on: ${base}`);
+  assert.match(base, /transition\s*:\s*box-shadow \.5s ease\b/, `message card shadow should ease softly: ${base}`);
+  assert.match(base, /box-shadow\s*:\s*inset 0 0 0 \.5px rgba\(87,96,106,\.10\)/, `message card should keep a permanent 10% hairline: ${base}`);
 
   const hover = ruleBody(".msg:hover");
   assert.match(hover, /background\s*:\s*transparent\b/, `hover must not dim or gray-fill message body: ${hover}`);
-  assert.match(hover, /box-shadow\s*:\s*inset 0 0 0 \.5px var\(--card-line-strong\),0 10px 28px rgba\(15,23,42,\.045\)/, `hover should keep a fine line with a slightly stronger shadow: ${hover}`);
+  assert.match(hover, /box-shadow\s*:\s*inset 0 0 0 \.5px rgba\(87,96,106,\.18\),0 6px 18px rgba\(15,23,42,\.035\)/, `hover should raise the hairline to 18% while keeping the smaller shadow: ${hover}`);
+});
+
+test("new messages expand from below so existing messages move smoothly", () => {
+  const frames = css.match(/@keyframes msg-enter\s*\{[\s\S]*?\n\}/)?.[0] ?? "";
+  assert.match(frames, /transform:\s*translateY\(18px\)/, `message should start below its final position: ${frames}`);
+  assert.match(frames, /max-height:0/, `message should start collapsed so it pushes prior messages smoothly: ${frames}`);
+  assert.match(frames, /max-height:40rem/, `message should expand during enter animation: ${frames}`);
+  const enter = ruleBody(".msg-enter");
+  assert.match(enter, /overflow\s*:\s*hidden\b/, `entering messages should clip during height expansion: ${enter}`);
+  assert.match(enter, /animation-duration\s*:\s*1s\b/, `human and persisted messages should finish their enter animation in 1 second: ${enter}`);
+  assert.match(enter, /animation-timing-function\s*:\s*var\(--ease-expo\)/, `enter animation should move fast first and slow down: ${enter}`);
+  assert.match(enter, /animation-fill-mode\s*:\s*backwards\b/, `enter animation should not leave max-height constraints after completion: ${enter}`);
+  assert.match(css, /@media \(prefers-reduced-motion:reduce\)\{\.msg-enter\{animation:none\}\}/, "reduced-motion users should not get message enter movement");
 });
 
 test("message toolbar stays inside the message border and exposes save/copy/more directly", () => {
@@ -130,13 +147,23 @@ test("reaction footer keeps the upstream add-reaction entry even with no reactio
   assert.match(chatSrc, /<div className="msg-rx">/);
   assert.match(chatSrc, /<button className="rx-add" title=\{i18n\.t\("chat\.addReaction"\)\}/);
   const add = ruleBody(".rx-add");
+  assert.match(add, /border\s*:\s*0\b/, `add-reaction should not draw an outer pill border: ${add}`);
+  assert.match(add, /background\s*:\s*transparent\b/, `add-reaction should read as a bare icon affordance: ${add}`);
   assert.match(add, /opacity\s*:\s*0\b/, `add-reaction should stay quiet until hover/focus: ${add}`);
   assert.match(add, /transition\s*:\s*opacity \.5s ease\b/, `add-reaction should fade in with the message hairline timing: ${add}`);
+  assert.match(chatSrc, /<Smile size=\{17\}/, "add-reaction smile icon should be slightly larger without restoring the old border");
 });
 
 test("composer removes the hard divider and aligns its input with the message column", () => {
   const mainScroll = ruleBody("main.content-col > .scroll");
   assert.match(mainScroll, /padding-bottom\s*:\s*176px\b/, `main chat scroller should reserve space for the overlaid composer: ${mainScroll}`);
+  assert.match(mainScroll, /background\s*:\s*var\(--surface\)/, `message scroller should keep the scrollbar rail pure white: ${mainScroll}`);
+  assert.doesNotMatch(mainScroll, /border-right\s*:/, `message scroller should not draw a hard line beside the scrollbar: ${mainScroll}`);
+  assert.match(ruleBody("main.content-col > .scroll::-webkit-scrollbar-track"), /background\s*:\s*var\(--surface\)/, "scrollbar track should stay white");
+  assert.doesNotMatch(ruleBody("main.content-col > .scroll::-webkit-scrollbar-track"), /border-left\s*:/, "scrollbar track should not draw a vertical rail line");
+  const thumb = ruleBody("main.content-col > .scroll::-webkit-scrollbar-thumb");
+  assert.match(thumb, /background\s*:\s*rgba\(87,96,106,\.32\)/, "scrollbar thumb should remain visible on the white track");
+  assert.match(thumb, /border\s*:\s*3px solid var\(--surface\)/, "scrollbar thumb should be inset without reintroducing a rail line");
 
   const composer = ruleBody(".composer");
   assert.match(composer, /border-top\s*:\s*0\b/, `composer should not draw a hard horizontal divider: ${composer}`);
@@ -152,11 +179,11 @@ test("composer removes the hard divider and aligns its input with the message co
   assert.match(fade, /left\s*:\s*0(?:;|$)/, `composer fade should span the composer container so there is no visible side cut: ${fade}`);
   assert.match(fade, /right\s*:\s*0(?:;|$)/, `composer fade should span the composer container so there is no visible side cut: ${fade}`);
   assert.doesNotMatch(fade, /max-width\s*:/, `composer fade should avoid finite-width side edges: ${fade}`);
-  assert.match(fade, /top\s*:\s*-46px\b/, `composer fade should overlap more of the scroll edge above the input: ${fade}`);
-  assert.match(fade, /height\s*:\s*46px\b/, `composer fade should have enough room to read as gradual: ${fade}`);
+  assert.match(fade, /top\s*:\s*-30px\b/, `composer fade should be thinner and sit close to the input: ${fade}`);
+  assert.match(fade, /height\s*:\s*30px\b/, `composer fade should not consume too much reading space: ${fade}`);
   assert.doesNotMatch(fade, /transform\s*:/, `composer fade should not need centering transforms that create side boundaries: ${fade}`);
   assert.doesNotMatch(fade, /clip-path\s*:/, `composer fade should not use hard-clipped edges: ${fade}`);
-  assert.match(fade, /linear-gradient\(to bottom,rgba\(255,255,255,0\),rgba\(255,255,255,\.72\) 68%,var\(--surface\)\)/, `composer fade should use one continuous vertical gradient with no side mask seams: ${fade}`);
+  assert.match(fade, /linear-gradient\(to bottom,rgba\(255,255,255,0\),rgba\(255,255,255,\.58\) 72%,var\(--surface\)\)/, `composer fade should stay translucent until it disappears against the input: ${fade}`);
   assert.doesNotMatch(fade, /mask-image\s*:/, `composer fade should avoid mask seams at the side edges: ${fade}`);
   assert.match(fade, /pointer-events\s*:\s*none\b/, `composer fade should not block scroll or message clicks: ${fade}`);
 
@@ -207,9 +234,7 @@ test("composer removes the hard divider and aligns its input with the message co
   assert.match(jump, /font-size\s*:\s*0\b/, `jump button should hide the text label visually: ${jump}`);
   assert.match(ruleBody(".jump-bottom svg"), /width\s*:\s*17px\b/, "jump button should emphasize the arrow icon");
 
-  const hint = ruleBody(".wake-hint");
-  assert.match(hint, /max-width\s*:\s*calc\(var\(--read-measure\) \+ 72px\)/, `wake hint should align to message card width: ${hint}`);
-  assert.match(hint, /margin\s*:\s*0 auto\b/, `wake hint should be centered with messages: ${hint}`);
+  assert.match(css, /@media \(max-width:700px\)\{[\s\S]*?--read-pad:16px[\s\S]*?\.scroll\{padding-left:16px;padding-right:16px\}/, "mobile chat should reduce side gutters and give width back to message cards");
 
   const meta = ruleBody(".msg-meta");
   assert.match(meta, /margin-top\s*:\s*4px\b/, `reaction footer should sit closer to the last text line: ${meta}`);

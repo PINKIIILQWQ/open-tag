@@ -59,7 +59,7 @@ test("new message enter animation keeps an already pinned chat at the real botto
     const el = { scrollTop: 1000, scrollHeight: 1100 };
     keepPinnedToBottomDuringEnter(el, () => pinned);
 
-    assert.equal(MESSAGE_ENTER_PIN_MS, 620);
+    assert.equal(MESSAGE_ENTER_PIN_MS, 1000);
     assert.equal(el.scrollTop, 1100);
     assert.equal(frames.length, 1);
 

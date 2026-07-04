@@ -25,7 +25,7 @@ const fmtSize = (n?: number) => (!n ? "" : n < 1024 ? n + " B" : n < 1048576 ? (
 const isImage = (m?: string) => !!m && m.startsWith("image/");
 const isVideo = (m?: string) => !!m && m.startsWith("video/");
 export const BACK_TO_BOTTOM_SCROLL_MS = 800;
-export const MESSAGE_ENTER_PIN_MS = 620;
+export const MESSAGE_ENTER_PIN_MS = 1000;
 export const backToBottomEase = (t: number) => 1 - Math.pow(1 - t, 3);
 
 export function animateBackToBottom(el: Pick<HTMLDivElement, "scrollTop" | "scrollHeight">, done?: () => void) {
@@ -80,7 +80,7 @@ function Reactions({ m, mine, onReact }: { m: Msg; mine: string; onReact: (emoji
         return <button key={r.emoji} className={"rx-chip" + (did ? " on" : "")} onClick={() => onReact(r.emoji, !!did)}>{r.emoji} {r.count}{names ? <span className="rx-tip" role="tooltip">{names}</span> : null}</button>;
       })}
       <span className="rx-add-wrap">
-        <button className="rx-add" title={i18n.t("chat.addReaction")} onMouseDown={(e) => { e.preventDefault(); setPick((v) => !v); }}><Smile size={15} /></button>
+        <button className="rx-add" title={i18n.t("chat.addReaction")} onMouseDown={(e) => { e.preventDefault(); setPick((v) => !v); }}><Smile size={17} /></button>
         {pick && <span className="rx-pop" onMouseLeave={() => setPick(false)}>{QUICK_EMOJIS.map((e) => <button key={e} onMouseDown={(ev) => { ev.preventDefault(); onReact(e, false); setPick(false); }}>{e}</button>)}</span>}
       </span>
     </div>
