@@ -325,6 +325,8 @@
     "agentSleeping": "@{{name}} 正在休眠,发消息会唤醒 ta 接手。",
     "machineOfflineComposerPlaceholder": "{{names}} 所在机器离线，重新连接前无法运行。",
     "agentSleepingComposerPlaceholder": "@{{name}} 正在休眠，发消息会唤醒 ta 接手。",
+    "agentOnlineComposerPlaceholder": "@{{name}} 在线，发送消息即可。",
+    "agentWorkingComposerPlaceholder": "@{{name}} 正在工作，发送消息会排队送达。",
     "memberKind": "成员",
     "taskPlaceholder": "描述任务…(发送后进 Tasks 板)",
     "dmPlaceholder": "发消息给 @{{name}}",

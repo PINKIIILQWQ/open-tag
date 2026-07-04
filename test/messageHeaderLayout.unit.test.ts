@@ -242,8 +242,16 @@ test("composer removes the hard divider and aligns its input with the message co
 
 test("composer uses reachability as placeholder instead of a separate wake hint row", () => {
   const composerSrc = fs.readFileSync(new URL("../web/src/views/Composer.tsx", import.meta.url), "utf8");
+  const en = fs.readFileSync(new URL("../web/src/locales/en.json", import.meta.url), "utf8");
+  const zh = fs.readFileSync(new URL("../web/src/locales/zh.json", import.meta.url), "utf8");
   assert.doesNotMatch(composerSrc, /className="wake-hint/, "wake state should no longer render as a separate row above the composer");
   assert.match(composerSrc, /const reachPlaceholder = reach \?/, "reachability state should feed the textarea placeholder");
   assert.match(composerSrc, /reach\.kind === "off" \? t\("chat\.machineOfflineComposerPlaceholder"/, "offline machine hint should have a composer placeholder");
   assert.match(composerSrc, /t\("chat\.agentSleepingComposerPlaceholder"/, "sleeping agent hint should have a composer placeholder");
+  assert.match(composerSrc, /agentOnlineComposerPlaceholder/, "online DM agent state should have a composer placeholder");
+  assert.match(composerSrc, /agentWorkingComposerPlaceholder/, "working DM agent state should have a composer placeholder");
+  assert.match(en, /"agentOnlineComposerPlaceholder"/);
+  assert.match(en, /"agentWorkingComposerPlaceholder"/);
+  assert.match(zh, /"agentOnlineComposerPlaceholder"/);
+  assert.match(zh, /"agentWorkingComposerPlaceholder"/);
 });

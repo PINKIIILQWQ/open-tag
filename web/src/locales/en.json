@@ -325,6 +325,8 @@
     "agentSleeping": "@{{name}} is sleeping. Send a message to wake them up.",
     "machineOfflineComposerPlaceholder": "{{names}} is offline until their machine reconnects.",
     "agentSleepingComposerPlaceholder": "@{{name}} is sleeping. Send a message to wake them up.",
+    "agentOnlineComposerPlaceholder": "@{{name}} is online. Send a message.",
+    "agentWorkingComposerPlaceholder": "@{{name}} is working. Send a message to add it to their queue.",
     "memberKind": "Member",
     "taskPlaceholder": "Describe the task… (it will appear in Tasks after sending)",
     "dmPlaceholder": "Message @{{name}}",

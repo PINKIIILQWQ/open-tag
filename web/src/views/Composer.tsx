@@ -39,16 +39,26 @@ export function Composer({ channelId, placeholder, allowAsTask = false, dmAgent,
   // agent can't see it until its machine reconnects — at which point reconnect catch-up wakes it to process the
   // backlog), or, for a DM (single peer), when the peer is merely sleeping (sending wakes it). Channels have no
   // single peer, so they only get the offline hint, keyed off whoever is @-mentioned in the draft.
-  const reach = useMemo<{ kind: "off" | "sleep"; names: string } | null>(() => {
+  const reach = useMemo<{ kind: "off" | "sleep" | "work" | "on"; names: string } | null>(() => {
     const targets = new Map<string, Agent>();
     if (dmAgent) targets.set(dmAgent.id, dmAgent);
     for (const m of text.matchAll(/@([\p{L}\p{N}_-]+)/gu)) { const a = agents.find((x) => x.name === m[1]); if (a) targets.set(a.id, a); }
-    const offline = [...targets.values()].filter((a) => !a.machineId || machines.find((mc) => mc.id === a.machineId)?.status !== "online");
+    const allTargets = [...targets.values()];
+    const offline = allTargets.filter((a) => !a.machineId || machines.find((mc) => mc.id === a.machineId)?.status !== "online");
     if (offline.length) return { kind: "off", names: offline.map((a) => a.displayName || a.name).join(", ") };
-    if (dmAgent) { const st = dmAgent.activity || dmAgent.status; if (st === "sleeping" || st === "inactive" || st === "offline") return { kind: "sleep", names: dmAgent.displayName || dmAgent.name }; }
+    const working = allTargets.filter((a) => { const st = a.activity || a.status; return st === "working" || st === "thinking"; });
+    if (working.length) return { kind: "work", names: working.map((a) => a.displayName || a.name).join(", ") };
+    const sleeping = allTargets.filter((a) => { const st = a.activity || a.status; return st === "sleeping" || st === "inactive" || st === "offline"; });
+    if (sleeping.length) return { kind: "sleep", names: sleeping.map((a) => a.displayName || a.name).join(", ") };
+    if (allTargets.length) return { kind: "on", names: allTargets.map((a) => a.displayName || a.name).join(", ") };
     return null;
   }, [text, dmAgent, agents, machines]);
-  const reachPlaceholder = reach ? (reach.kind === "off" ? t("chat.machineOfflineComposerPlaceholder", { names: reach.names }) : t("chat.agentSleepingComposerPlaceholder", { name: reach.names })) : null;
+  const reachPlaceholder = reach ? (
+    reach.kind === "off" ? t("chat.machineOfflineComposerPlaceholder", { names: reach.names }) :
+    reach.kind === "work" ? t("chat.agentWorkingComposerPlaceholder", { name: reach.names }) :
+    reach.kind === "on" ? t("chat.agentOnlineComposerPlaceholder", { name: reach.names }) :
+    t("chat.agentSleepingComposerPlaceholder", { name: reach.names })
+  ) : null;
   const effectivePlaceholder = reachPlaceholder ?? (allowAsTask && asTask ? t("chat.taskPlaceholder") : placeholder);
 
   const send = async (forceTask?: boolean) => {
