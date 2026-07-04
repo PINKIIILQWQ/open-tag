@@ -121,6 +121,7 @@ test("message toolbar stays inside the message border and exposes save/copy/more
   assert.match(toolbar, /background\s*:\s*transparent\b/, `toolbar must not look like a detached floating pill: ${toolbar}`);
   assert.match(toolbar, /border\s*:\s*0\b/, `toolbar must not draw a separate border: ${toolbar}`);
   assert.match(toolbar, /box-shadow\s*:\s*none\b/, `toolbar must not cast a floating shadow: ${toolbar}`);
+  assert.match(toolbar, /transition\s*:\s*opacity \.5s ease\b/, `toolbar should fade in with the message hairline timing: ${toolbar}`);
   assert.match(ruleBody(".msg-toolbar button.on"), /color\s*:\s*var\(--ink\)/, "saved toolbar button should render as filled/dark");
 });
 
@@ -130,7 +131,7 @@ test("reaction footer keeps the upstream add-reaction entry even with no reactio
   assert.match(chatSrc, /<button className="rx-add" title=\{i18n\.t\("chat\.addReaction"\)\}/);
   const add = ruleBody(".rx-add");
   assert.match(add, /opacity\s*:\s*0\b/, `add-reaction should stay quiet until hover/focus: ${add}`);
-  assert.match(add, /transition\s*:\s*opacity \.12s\b/, `add-reaction should keep the original lightweight transition: ${add}`);
+  assert.match(add, /transition\s*:\s*opacity \.5s ease\b/, `add-reaction should fade in with the message hairline timing: ${add}`);
 });
 
 test("composer removes the hard divider and aligns its input with the message column", () => {
@@ -185,6 +186,15 @@ test("composer removes the hard divider and aligns its input with the message co
   const send = ruleBody(".send-btn");
   assert.match(send, /width\s*:\s*32px\b/, `send button should be compact but still tappable: ${send}`);
   assert.match(send, /height\s*:\s*32px\b/, `send button should be compact but still tappable: ${send}`);
+
+  const chatHead = ruleBody(".chat-head");
+  assert.match(chatHead, /border-bottom\s*:\s*0\b/, `chat header should not draw a hard divider above messages: ${chatHead}`);
+  assert.match(chatHead, /position\s*:\s*relative\b/, `chat header should anchor its soft fade: ${chatHead}`);
+  const topFade = ruleBody(".chat-head::after");
+  assert.match(topFade, /linear-gradient\(to bottom,var\(--surface\),rgba\(255,255,255,\.72\) 32%,rgba\(255,255,255,0\)\)/, `chat header should use a soft fade instead of a line: ${topFade}`);
+  assert.match(topFade, /pointer-events\s*:\s*none\b/, `chat header fade should not block scroll or clicks: ${topFade}`);
+  assert.doesNotMatch(ruleBody("aside.traj-col"), /border-left\s*:/, "trajectory panel should not draw a hard vertical divider");
+  assert.doesNotMatch(ruleBody(".thread-panel"), /border-left\s*:/, "thread panel should not draw a hard vertical divider");
 
   const jump = ruleBody(".jump-bottom");
   assert.match(jump, /bottom\s*:\s*154px\b/, `jump button should float above the composer with visible air: ${jump}`);

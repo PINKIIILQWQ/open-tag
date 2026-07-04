@@ -222,6 +222,8 @@ main.content-col{display:flex;flex-direction:column;height:100vh;background:var(
    keep name + description + tabs on ONE row. The description shrinks to an ellipsis instead of wrapping — wrapping
    otherwise multiplied the header height and dropped the channel name to the bottom when the column got narrow
    (e.g. a wide right panel). Name + tabs never shrink, so the tab row stays intact instead of being pushed around. */
+.chat-head{position:relative;border-bottom:0;background:var(--surface);z-index:11}
+.chat-head::after{content:"";position:absolute;left:0;right:0;bottom:-46px;height:46px;background:linear-gradient(to bottom,var(--surface),rgba(255,255,255,.72) 32%,rgba(255,255,255,0));pointer-events:none}
 .chat-head>h1{flex-shrink:0}
 .chat-head>small,.chat-head>.head-status{min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .chat-head>.chtabs{flex-shrink:0}
@@ -475,7 +477,7 @@ main.content-col > .composer{position:absolute;left:0;right:var(--scrollbar-gutt
 .pane-empty .pe-title{font-family:var(--serif);font-weight:300;font-size:23px;line-height:1.25;letter-spacing:-.3px;color:var(--ink-2);max-width:34ch}
 .pane-empty .pe-sub{font-size:14px;line-height:1.55;color:var(--muted);max-width:44ch}
 
-aside.traj-col{position:relative;background:var(--canvas);border-left:1px solid var(--hair);padding:22px 20px;overflow-y:auto;overflow-x:hidden}
+aside.traj-col{position:relative;background:var(--canvas);padding:22px 20px;overflow-y:auto;overflow-x:hidden}
 aside.traj-col::before{content:"";position:absolute;top:-60px;right:-80px;width:220px;height:220px;pointer-events:none;background:radial-gradient(circle,var(--g-peach),transparent 68%);opacity:.5;filter:blur(8px)}
 aside.traj-col h2{position:relative;font-size:12px;font-weight:600;letter-spacing:.9px;text-transform:uppercase;color:var(--muted);margin:0 0 14px}
 .traj{position:relative;font-size:15px;margin-bottom:10px;padding-left:12px;border-left:1px solid var(--hair-strong);color:var(--body);overflow-wrap:anywhere;min-width:0}
@@ -566,7 +568,7 @@ aside.traj-col h2{position:relative;font-size:12px;font-weight:600;letter-spacin
 .rx-chip:hover .rx-tip,.rx-chip:focus-visible .rx-tip{opacity:1;transform:translateX(-50%) translateY(0)}
 @media (prefers-reduced-motion:reduce){.rx-tip{transition:none}}
 .rx-add-wrap{position:relative;display:inline-flex}
-.rx-add{font-size:13px;line-height:1;padding:3px 7px;border:1px solid var(--hair);border-radius:9999px;background:var(--surface);color:var(--muted-soft);cursor:pointer;opacity:0;transition:opacity .12s}
+.rx-add{font-size:13px;line-height:1;padding:3px 7px;border:1px solid var(--hair);border-radius:9999px;background:var(--surface);color:var(--muted-soft);cursor:pointer;opacity:0;transition:opacity .5s ease}
 .msg:hover .rx-add,.rx-add:focus{opacity:1}
 .rx-pop{position:absolute;bottom:100%;left:0;margin-bottom:6px;display:flex;gap:2px;background:var(--surface);border:1px solid var(--hair-strong);border-radius:12px;box-shadow:0 8px 24px rgba(12,10,9,.14);padding:5px;z-index:60}
 .rx-pop button{font-size:18px;line-height:1;padding:4px 6px;border:0;background:none;border-radius:8px;cursor:pointer}
@@ -620,7 +622,7 @@ aside.traj-col h2{position:relative;font-size:12px;font-weight:600;letter-spacin
 .action-card .ac-done{margin-top:8px;display:inline-flex;align-items:center;gap:5px;font-size:12px;color:var(--success);font-weight:500}
 .head-status{display:inline-flex;align-items:center;gap:6px;font-size:12px;color:var(--muted)}
 /* Thread panel (right-side overlay) */
-.thread-panel{background:var(--canvas);border-left:1px solid var(--hair);display:flex;flex-direction:column;overflow:hidden}
+.thread-panel{background:var(--canvas);display:flex;flex-direction:column;overflow:hidden}
 .thread-head{display:flex;align-items:center;gap:2px;padding:14px 18px;border-bottom:1px solid var(--hair);font-family:'EB Garamond','Times New Roman',serif;font-size:20px;color:var(--ink)}
 .thread-head .grow{flex:1}
 /* thread head icon buttons (mark done / unfollow / source message / close): unified transparent tertiary, surface appears on hover, flex-centered icons */
@@ -803,7 +805,7 @@ aside.traj-col.profile-mode .scroll{flex:1;min-height:0;overflow:auto;margin:0 -
 .md .ref-task:hover{background:var(--task-mention-strong)}
 
 /* ── Message hover toolbar: inline with the message border, not a detached floating pill ──────────── */
-.msg-toolbar{position:absolute;top:7px;right:10px;display:flex;gap:2px;background:transparent;border:0;border-radius:8px;box-shadow:none;padding:0;opacity:0;pointer-events:none;transition:opacity .1s;z-index:5}
+.msg-toolbar{position:absolute;top:7px;right:10px;display:flex;gap:2px;background:transparent;border:0;border-radius:8px;box-shadow:none;padding:0;opacity:0;pointer-events:none;transition:opacity .5s ease;z-index:5}
 .msg:hover .msg-toolbar{opacity:1;pointer-events:auto}
 .msg-toolbar button{border:0;background:transparent;color:var(--muted);font-size:15px;line-height:1;padding:5px 7px;border-radius:6px;cursor:pointer}
 .msg-toolbar button:hover{background:var(--surface-strong)}
