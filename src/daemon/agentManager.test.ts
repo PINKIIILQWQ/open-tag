@@ -87,6 +87,42 @@ test("one-shot runtime start with pending delivery uses wake nudge without a sec
   }
 });
 
+test("one-shot runtime streams reply preview during start wake nudge", async () => {
+  const root = mkdtempSync(path.join(tmpdir(), "open-tag-agent-manager-"));
+  const sent: any[] = [];
+  const fakeRuntime: Runtime = {
+    name: "one-shot-test",
+    oneShotWake: true,
+    start(_opts: StartOpts, cb: RuntimeCallbacks) {
+      cb.onSession("one-shot-session");
+      cb.onTrajectory([{ kind: "text", text: "one-shot text" }]);
+      cb.onActivity("online");
+      return { deliver: () => {}, stop: () => {} };
+    },
+  };
+
+  try {
+    const mgr = new AgentManager((msg) => sent.push(msg), {
+      dataDir: root,
+      binDir: root,
+      oneShotDeliverDebounceMs: 0,
+      runtimeResolver: () => fakeRuntime,
+    });
+    const config = { ...baseConfig("agent-one-shot"), runtime: "one-shot-test", sessionId: "existing-session" };
+    const start = mgr.start("agent-one-shot", config);
+    mgr.deliver("agent-one-shot", "User", "chan-1", true, { targetName: "#all", msgShort: "m1" });
+    await start;
+
+    const replies = sent.filter((m) => m.type === "agent:reply");
+    assert.deepEqual(replies.map((m) => m.op), ["start", "delta", "done"]);
+    assert.equal(replies[0]?.channelId, "chan-1");
+    assert.equal(replies[1]?.text, "one-shot text");
+    mgr.stopAll();
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
 test("concurrent starts for the same agent are idempotent", async () => {
   const root = mkdtempSync(path.join(tmpdir(), "open-tag-agent-manager-"));
   let startCount = 0;
@@ -111,6 +147,46 @@ test("concurrent starts for the same agent are idempotent", async () => {
     ]);
 
     assert.equal(startCount, 1);
+    mgr.stopAll();
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test("runtime text trajectory is mirrored as an ephemeral agent reply preview", async () => {
+  const root = mkdtempSync(path.join(tmpdir(), "open-tag-agent-manager-"));
+  const sent: any[] = [];
+  const fakeRuntime: Runtime = {
+    name: "fake",
+    start(_opts: StartOpts, cb: RuntimeCallbacks) {
+      cb.onSession("fake-session");
+      return {
+        deliver: () => {
+          cb.onTrajectory([{ kind: "text", text: "streamed text" }]);
+          cb.onActivity("online");
+        },
+        stop: () => {},
+      };
+    },
+  };
+
+  try {
+    const mgr = new AgentManager((msg) => sent.push(msg), {
+      dataDir: root,
+      binDir: root,
+      deliverDebounceMs: 0,
+      runtimeResolver: () => fakeRuntime,
+    });
+    await mgr.start("agent-3", baseConfig("agent-3"));
+    mgr.deliver("agent-3", "User", "chan-1", true, { targetName: "#all", msgShort: "m1" });
+    await new Promise((resolve) => setTimeout(resolve, 10));
+
+    const replies = sent.filter((m) => m.type === "agent:reply");
+    assert.deepEqual(replies.map((m) => m.op), ["start", "delta", "done"]);
+    assert.equal(replies[0]?.channelId, "chan-1");
+    assert.equal(replies[1]?.text, "streamed text");
+    assert.equal(replies[0]?.streamId, replies[1]?.streamId);
+    assert.equal(replies[1]?.streamId, replies[2]?.streamId);
     mgr.stopAll();
   } finally {
     rmSync(root, { recursive: true, force: true });
