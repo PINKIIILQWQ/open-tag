@@ -4,7 +4,7 @@ import { useTranslation } from "react-i18next";
 import i18n from "../i18n";
 import { useStore, fmtTime, type Msg, type Att } from "../store.tsx";
 import { PAGE_SIZE, appendWithCap, nextScrollState } from "../lib/msgPaging";
-import { applyAgentReplyPreview, dropAgentReplyPreviewsForMessage, type AgentReplyEvent } from "../lib/agentReplyPreview";
+import { AGENT_REPLY_STREAM_TICK_MS, absorbPersistedAgentMessagePreview, applyAgentReplyPreview, dropAgentReplyPreviewsForMessage, hasStreamingAgentReplyPreview, tickAgentReplyPreviews, type AgentReplyEvent } from "../lib/agentReplyPreview";
 import { MessageContent } from "../messageRender.tsx";
 import { nextThreadMeta } from "../threadUnread";
 import { Smile, X, ExternalLink, CheckCircle2, MessageCircle, MoreHorizontal, Link2, Clipboard, Bookmark, CheckSquare, Circle, Play, Eye, Ban, ArrowDown, BellOff, Lock, Globe, Archive, Trash2 } from "lucide-react";
@@ -254,7 +254,7 @@ export function Chat() {
     // eslint-disable-next-line
   }, [agentPanelReq]);
   useEffect(() => onEvent((e) => {
-    if (e.type === "message" && e.channelId === cur?.id) { const idx = Math.min(burstCountRef.current, 7); newMsgOrderRef.current.set(e.message.id, idx); burstCountRef.current += 1; if (burstTimerRef.current) clearTimeout(burstTimerRef.current); burstTimerRef.current = setTimeout(() => { burstCountRef.current = 0; burstTimerRef.current = null; }, 600); setMsgs((m) => { const { next, trimmed } = appendWithCap(dropAgentReplyPreviewsForMessage(m, e.message), e.message, atBottomRef.current && !loadingOlderRef.current); if (trimmed) trimmedRef.current = true; return next; }); markRead(cur.id); } // don't trim mid-pagination: a trim's setHasMore(true) would race the in-flight loadOlder's setHasMore — suppressing it closes the window (the next message trims instead)
+    if (e.type === "message" && e.channelId === cur?.id) { const idx = Math.min(burstCountRef.current, 7); newMsgOrderRef.current.set(e.message.id, idx); burstCountRef.current += 1; if (burstTimerRef.current) clearTimeout(burstTimerRef.current); burstTimerRef.current = setTimeout(() => { burstCountRef.current = 0; burstTimerRef.current = null; }, 600); setMsgs((m) => { const preview = absorbPersistedAgentMessagePreview(m, e.message); if (preview.consumed) return preview.messages; const { next, trimmed } = appendWithCap(dropAgentReplyPreviewsForMessage(m, e.message), e.message, atBottomRef.current && !loadingOlderRef.current); if (trimmed) trimmedRef.current = true; return next; }); markRead(cur.id); } // don't trim mid-pagination: a trim's setHasMore(true) would race the in-flight loadOlder's setHasMore — suppressing it closes the window (the next message trims instead)
     else if (e.type === "message:updated" && e.message) setMsgs((m) => m.map((x) => (x.id === e.message.id ? { ...x, ...e.message } : x))); // sync reactions and task fields
     else if (e.type === "agent:reply" && e.channelId === cur?.id) setMsgs((m) => applyAgentReplyPreview(m, e as AgentReplyEvent, agents.find((a) => a.id === e.agentId)));
     else if (e.type === "thread:updated" && e.parentMessageId) setThreadMeta((tm) => ({ // live reply count update; unreadCount is approximated from the replyCount delta (the authoritative value is corrected on channel switch via GET)
@@ -263,6 +263,17 @@ export function Chat() {
     }));
     else if (e.type === "agent") setSub(e.activity ? `${e.name} · ${e.activity}${e.detail ? " · " + e.detail : ""}` : ""); // live-trace entries are accumulated globally in the store (see store.tsx agent:activity handler), so they persist across channel/DM switches
   }), [cur?.id, agents]);
+  const streamingPreviewActive = hasStreamingAgentReplyPreview(msgs);
+  useEffect(() => {
+    if (!streamingPreviewActive) return;
+    const timer = window.setInterval(() => {
+      setMsgs((m) => {
+        const tick = tickAgentReplyPreviews(m);
+        return tick.changed ? tick.messages : m;
+      });
+    }, AGENT_REPLY_STREAM_TICK_MS);
+    return () => window.clearInterval(timer);
+  }, [streamingPreviewActive]);
   useEffect(() => { const el = scrollRef.current; if (!el || msgParam) return; if (atBottomRef.current) keepPinnedToBottomDuringEnter(el, () => atBottomRef.current && !msgParam); }, [msgs, msgParam]); // auto-scroll only when already pinned to the bottom, and keep pinned while new message enter animation expands
   // Keep the viewport anchored across an older-page prepend: restore scrollTop before paint. Runs before the auto-scroll effect above, which is a no-op here anyway (a prepend only happens while scrolled up, so atBottomRef is false).
   useLayoutEffect(() => { const el = scrollRef.current; if (el && prependRestoreRef.current != null) { el.scrollTop = el.scrollHeight - prependRestoreRef.current; prependRestoreRef.current = null; } }, [msgs]);
@@ -616,10 +627,24 @@ function ThreadPanel({ channelId, parent, onClose, onOpenProfile }: { channelId:
   const scrollRef = useRef<HTMLDivElement>(null);
   useEffect(() => { subscribeChannel(channelId); (async () => { const d = await api("GET", `/api/messages/channel/${channelId}?limit=200`); setMsgs(d.messages || []); })(); }, [channelId]); // join the thread room so replies arrive live (openThread/startThread do not make the socket a room member on their own)
   useEffect(() => onEvent((e) => {
-    if (e.type === "message" && e.channelId === channelId) setMsgs((m) => [...dropAgentReplyPreviewsForMessage(m, e.message), e.message]);
+    if (e.type === "message" && e.channelId === channelId) setMsgs((m) => {
+      const preview = absorbPersistedAgentMessagePreview(m, e.message);
+      return preview.consumed ? preview.messages : [...dropAgentReplyPreviewsForMessage(m, e.message), e.message];
+    });
     else if (e.type === "message:updated" && e.message?.channelId === channelId) setMsgs((m) => m.map((x) => (x.id === e.message.id ? { ...x, ...e.message } : x)));
     else if (e.type === "agent:reply" && e.channelId === channelId) setMsgs((m) => applyAgentReplyPreview(m, e as AgentReplyEvent, agents.find((a) => a.id === e.agentId)));
   }), [channelId, agents]);
+  const streamingPreviewActive = hasStreamingAgentReplyPreview(msgs);
+  useEffect(() => {
+    if (!streamingPreviewActive) return;
+    const timer = window.setInterval(() => {
+      setMsgs((m) => {
+        const tick = tickAgentReplyPreviews(m);
+        return tick.changed ? tick.messages : m;
+      });
+    }, AGENT_REPLY_STREAM_TICK_MS);
+    return () => window.clearInterval(timer);
+  }, [streamingPreviewActive]);
   useEffect(() => { if (scrollRef.current) scrollRef.current.scrollTop = scrollRef.current.scrollHeight; }, [msgs]);
   const row = (m: Msg) => {
     if (m.senderType === "system") return <div className="msg-sys" id={"m-" + m.id} key={m.id}>{m.content}</div>; // system messages render as a banner with no avatar

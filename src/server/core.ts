@@ -174,6 +174,10 @@ export function serializeMsg(msg: typeof schema.messages.$inferSelect, mentions:
   };
 }
 
+export function agentReplyStreamId(messageId: string, agentId: string): string {
+  return `${messageId}:${agentId}`;
+}
+
 async function publishThreadUpdated(
   serverId: string,
   ch: typeof schema.channels.$inferSelect | undefined,
@@ -414,9 +418,11 @@ export async function createMessage(opts: {
       const a0 = (await db.select({ scopes: schema.agents.scopes }).from(schema.agents).where(eq(schema.agents.id, mem.id)))[0];
       if (!isWakeable({ channelType: ch?.type ?? "channel", mentioned, hasInboxScope: agentHasScope(a0?.scopes, "inbox:receive"), senderType: opts.senderType })) continue;
     }
+    const replyStreamId = agentReplyStreamId(msg!.id, mem.id);
+    await publish(opts.serverId, { type: "agent:reply", agentId: mem.id, channelId: opts.channelId, streamId: replyStreamId, name: mem.displayName || mem.name, triggerMessageId: msg!.id, op: "start" });
     const cfg = await agentConfig(mem.id);
     if (cfg) broadcastToDaemons(opts.serverId, { type: "agent:start", agentId: mem.id, config: cfg });
-    broadcastToDaemons(opts.serverId, { type: "agent:deliver", agentId: mem.id, seq, from: opts.senderName, target: opts.channelId, targetName, msgShort, isTask: !!opts.asTask, message: { content: opts.content }, mentioned });
+    broadcastToDaemons(opts.serverId, { type: "agent:deliver", agentId: mem.id, seq, from: opts.senderName, target: opts.channelId, targetName, msgShort, isTask: !!opts.asTask, message: { content: opts.content }, mentioned, streamId: replyStreamId });
     woken.push(mem.name + (mentioned ? "(@)" : ""));
   }
   log.info("message created", {

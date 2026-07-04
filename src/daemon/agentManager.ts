@@ -21,8 +21,8 @@ export interface AgentConfig {
   model?: string; runtime?: string; runtimeConfig?: Record<string, unknown> | null; sessionId?: string;
   serverUrl: string; serverId: string; agentId: string; agentToken?: string; // per-agent token (slice10); re-sent start for a running agent may omit it (daemon ignores)
 }
-interface DeliverBuf { count: number; from: string; target: string; targetName: string; firstShort: string; latestShort: string; isTask: boolean; mentioned: boolean; targets: Set<string>; timer: ReturnType<typeof setTimeout>; }
-export interface DeliverMeta { targetName?: string; msgShort?: string; isTask?: boolean; }
+interface DeliverBuf { count: number; from: string; target: string; targetName: string; firstShort: string; latestShort: string; isTask: boolean; mentioned: boolean; targets: Set<string>; timer: ReturnType<typeof setTimeout>; streamId?: string; }
+export interface DeliverMeta { targetName?: string; msgShort?: string; isTask?: boolean; streamId?: string; }
 interface Running { session: RuntimeSession; config: AgentConfig; sessionId: string | null; idleTimer?: ReturnType<typeof setTimeout>; deliverBuf?: DeliverBuf; }
 interface PendingDeliver { from: string; target: string; mentioned: boolean; meta: DeliverMeta; }
 interface PendingDeliverQueue { items: PendingDeliver[]; timer: ReturnType<typeof setTimeout>; }
@@ -105,13 +105,14 @@ export class AgentManager {
     r.idleTimer = setTimeout(() => { this.log.info("idle sleep", { agentId, idleMs: IDLE_MS }); this.sleep(agentId); }, IDLE_MS);
   }
 
-  private startReplyPreview(agentId: string, r: Running, channelId: string): void {
+  private startReplyPreview(agentId: string, r: Running, channelId: string, streamId?: string): void {
     const existing = this.activeReplyPreviews.get(agentId);
-    if (existing?.channelId === channelId) return;
+    if (existing?.channelId === channelId && (!streamId || existing.streamId === streamId)) return;
+    if (existing?.channelId === channelId && streamId) return;
     this.finishReplyPreview(agentId);
     const preview: ActiveReplyPreview = {
       channelId,
-      streamId: `${Date.now()}-${++this.replySeq}`,
+      streamId: streamId ?? `${Date.now()}-${++this.replySeq}`,
       name: r.config.displayName || r.config.name || agentId,
     };
     this.activeReplyPreviews.set(agentId, preview);
@@ -203,7 +204,7 @@ export class AgentManager {
     this.agents.set(agentId, running);
     if (useOneShotWakeNudge) {
       const latest = pendingDeliverItems[pendingDeliverItems.length - 1];
-      if (latest) this.startReplyPreview(agentId, running, latest.target);
+      if (latest) this.startReplyPreview(agentId, running, latest.target, latest.meta.streamId);
     }
     running.session = runtime.start({
       cwd: dir, model: config.model, runtimeConfig: config.runtimeConfig, sessionId: config.sessionId, systemPrompt, env,
@@ -267,10 +268,10 @@ export class AgentManager {
     const b = r.deliverBuf;
     if (b) { // accumulate: count++, update latest, keep first unchanged, union target set
       clearTimeout(b.timer); b.count++; b.from = from; b.target = target; b.targetName = tname; b.latestShort = short;
-      b.isTask = b.isTask || !!meta.isTask; b.mentioned = b.mentioned || mentioned; b.targets.add(tname);
+      b.isTask = b.isTask || !!meta.isTask; b.mentioned = b.mentioned || mentioned; b.targets.add(tname); b.streamId = b.streamId ?? meta.streamId;
     }
-    const buf: DeliverBuf = b ?? { count: 1, from, target, targetName: tname, firstShort: short, latestShort: short, isTask: !!meta.isTask, mentioned, targets: new Set([tname]), timer: undefined as any };
-    this.startReplyPreview(agentId, r, target);
+    const buf: DeliverBuf = b ?? { count: 1, from, target, targetName: tname, firstShort: short, latestShort: short, isTask: !!meta.isTask, mentioned, targets: new Set([tname]), timer: undefined as any, streamId: meta.streamId };
+    this.startReplyPreview(agentId, r, target, buf.streamId);
     buf.timer = setTimeout(() => {
       r.deliverBuf = undefined;
       const note = inboxNotice({ count: buf.count, from: buf.from, targetName: buf.targetName, firstShort: buf.firstShort, latestShort: buf.latestShort, isTask: buf.isTask, isDm: buf.targetName.startsWith("dm:"), changedTargets: buf.targets.size, mentioned: buf.mentioned });
