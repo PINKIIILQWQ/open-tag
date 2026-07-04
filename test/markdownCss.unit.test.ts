@@ -69,6 +69,7 @@ test("chat Markdown styles cover rich GFM elements beyond paragraphs and code", 
   assertDecl(".md blockquote.github-alert-important", "--alert-color", "var\\(--alert-important\\)");
   assertDecl(".md blockquote.github-alert-warning", "--alert-color", "var\\(--alert-warning\\)");
   assertDecl(".md blockquote.github-alert-caution", "--alert-color", "var\\(--alert-caution\\)");
+  assert.match(css, /--alert-note:#92B6FF;--alert-tip:#72bd8f;--alert-important:#a98ad5;--alert-warning:#d9ad2b;--alert-caution:#d67b72/);
   assertDecl(".md table", "border-collapse", "collapse");
   assertDecl(".md table", "background", "transparent");
   assertDecl(".md td", "overflow-wrap", "anywhere");

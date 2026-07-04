@@ -13,7 +13,7 @@
   --tint-lav:#f1eef9;--tint-lav-ink:#6b5aa0;
   --tint-rose:#fdecea;--tint-rose-ink:#e0524a;--tint-green:#eafaf0;
   --on-ink:#fff;--mention:#f3e1b2;--mention-strong:#edd49a;--quote-text:#8b847c;--done-text:#9a948d;--scrim:rgba(12,10,9,.4);
-  --alert-note:#0969da;--alert-tip:#1a7f37;--alert-important:#8250df;--alert-warning:#9a6700;--alert-caution:#cf222e;
+  --alert-note:#92B6FF;--alert-tip:#72bd8f;--alert-important:#a98ad5;--alert-warning:#d9ad2b;--alert-caution:#d67b72;
   /* Shadow scale (elevation depth): black at varying opacity, centralized as tokens to prevent scattering (same sidecar approach); used for box-shadow on overlays/cards/menus */
   --shadow-1:rgba(0,0,0,.05);--shadow-2:rgba(0,0,0,.1);--shadow-3:rgba(0,0,0,.12);--shadow-4:rgba(0,0,0,.16);--shadow-5:rgba(0,0,0,.25);--shadow-6:rgba(0,0,0,.3);--shadow-7:rgba(0,0,0,.45);
   --font-display:'Google Sans','PingFang SC','Noto Sans SC','Noto Sans Simplified Chinese',-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;
