@@ -11,7 +11,7 @@ import remarkBreaks from "remark-breaks";
 import rehypeSanitize, { defaultSchema } from "rehype-sanitize";
 
 // sanitize allows only http/https/mailto by default; also allow our internal tag: protocol (token links)
-const schema = { ...defaultSchema, protocols: { ...defaultSchema.protocols, href: [...(defaultSchema.protocols?.href ?? ["http", "https", "mailto"]), "tag"] } };
+export const markdownSchema = { ...defaultSchema, protocols: { ...defaultSchema.protocols, href: [...(defaultSchema.protocols?.href ?? ["http", "https", "mailto"]), "tag"] } };
 
 type NameItem = { name?: string; id?: string };
 type MentionItem = { type?: string; id?: string; name?: string };
@@ -104,6 +104,24 @@ export function CodeBlock({ children }: { children: ReactNode }) {
   );
 }
 
+export function colorValueFromTag(href?: string | null): string | null {
+  if (!href?.startsWith("tag:color:")) return null;
+  try {
+    return decodeURIComponent(href.slice("tag:color:".length));
+  } catch {
+    return null;
+  }
+}
+
+export function ColorSwatch({ value }: { value: string }) {
+  return (
+    <span className="color-token" title={value}>
+      <span className="color-token-text">{value}</span>
+      <span className="color-chip" style={{ backgroundColor: value }} aria-hidden="true" />
+    </span>
+  );
+}
+
 // E9 simplified: code placeholder protection → token→tag: link (whitelist miss = rendered as-is) → restore code.
 // @mentions are resolved from the message's own mentions[] — the server-authored message_mentions rows, already
 // scoped to channel members — NOT from a workspace-wide name list. So an @name the server did not actually
@@ -140,20 +158,100 @@ export function remarkHtmlAsText() {
   return (tree: any): void => { downgrade(tree); };
 }
 
+const colorFunctionPattern = /\b(?:rgba?|hsla?|hwb|lab|lch|oklab|oklch|color|color-mix|light-dark)\(/gi;
+const hexColorPattern = /#(?:[0-9a-f]{3,4}|[0-9a-f]{6}|[0-9a-f]{8})(?![\p{L}\p{N}_-])/giu;
+
+function isWordLike(ch: string): boolean {
+  return /[\p{L}\p{N}_-]/u.test(ch);
+}
+
+function closingParenIndex(value: string, openIndex: number): number {
+  let depth = 0;
+  for (let i = openIndex; i < value.length; i++) {
+    const ch = value[i];
+    if (ch === "(") depth++;
+    else if (ch === ")") {
+      depth--;
+      if (depth === 0) return i;
+    } else if (ch === "\n") {
+      return -1;
+    }
+  }
+  return -1;
+}
+
+function colorTokenRanges(value: string): Array<{ start: number; end: number }> {
+  const ranges: Array<{ start: number; end: number }> = [];
+  for (const match of value.matchAll(colorFunctionPattern)) {
+    const start = match.index ?? 0;
+    if (start > 0 && isWordLike(value[start - 1] ?? "")) continue;
+    const open = start + match[0].length - 1;
+    const close = closingParenIndex(value, open);
+    if (close < 0) continue;
+    const token = value.slice(start, close + 1);
+    if (token.length > 160 || /[;{}<>]/.test(token)) continue;
+    ranges.push({ start, end: close + 1 });
+  }
+  for (const match of value.matchAll(hexColorPattern)) {
+    const start = match.index ?? 0;
+    if (start > 0 && isWordLike(value[start - 1] ?? "")) continue;
+    const end = start + match[0].length;
+    if (ranges.some((r) => start >= r.start && end <= r.end)) continue;
+    ranges.push({ start, end });
+  }
+  return ranges.sort((a, b) => a.start - b.start);
+}
+
+function colorizeTextNode(node: any): any[] {
+  const value = String(node.value ?? "");
+  const ranges = colorTokenRanges(value);
+  if (!ranges.length) return [node];
+  const out: any[] = [];
+  let cursor = 0;
+  for (const range of ranges) {
+    if (range.start < cursor) continue;
+    if (range.start > cursor) out.push({ ...node, value: value.slice(cursor, range.start) });
+    const token = value.slice(range.start, range.end);
+    out.push({ type: "link", url: `tag:color:${encodeURIComponent(token)}`, children: [{ type: "text", value: token }] });
+    cursor = range.end;
+  }
+  if (cursor < value.length) out.push({ ...node, value: value.slice(cursor) });
+  return out;
+}
+
+export function remarkColorSwatches() {
+  const visit = (node: any): void => {
+    if (!node || !Array.isArray(node.children)) return;
+    if (["link", "linkReference", "image", "imageReference"].includes(node.type)) return;
+    const next: any[] = [];
+    for (const child of node.children) {
+      if (child?.type === "text") next.push(...colorizeTextNode(child));
+      else {
+        visit(child);
+        next.push(child);
+      }
+    }
+    node.children = next;
+  };
+  return (tree: any): void => { visit(tree); };
+}
+
 export function MessageContent({ content, mentions, channels, nav }: { content: string; mentions: MentionItem[]; channels: NameItem[]; nav: Nav }) {
   const src = useMemo(() => processMessageContent(content, { mentions, channels }), [content, mentions, channels]);
   return (
     <div className="md">
       <ReactMarkdown
         urlTransform={(u) => (u.startsWith("tag:") ? u : defaultUrlTransform(u))}
-        remarkPlugins={[remarkGfm, remarkBreaks, remarkHtmlAsText]}
-        rehypePlugins={[[rehypeSanitize, schema]]}
+        remarkPlugins={[remarkGfm, remarkBreaks, remarkHtmlAsText, remarkColorSwatches]}
+        rehypePlugins={[[rehypeSanitize, markdownSchema]]}
         components={{
           pre({ children }) {
             return <CodeBlock>{children}</CodeBlock>;
           },
           a({ href, children }) {
             if (typeof href === "string" && href.startsWith("tag:")) {
+              const color = colorValueFromTag(href);
+              if (color) return <ColorSwatch value={color} />;
               const [, type, ...args] = href.split(":");
               const cls = type === "agent" || type === "human" ? "mention ref-at" : type === "channel" ? "ref-chan" : type === "thread" ? "ref-thread" : "ref-task";
               return <a className={cls} onClick={(e) => { e.preventDefault(); nav(type, args); }}>{children}</a>;

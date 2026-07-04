@@ -37,6 +37,11 @@ test("chat Markdown styles cover rich GFM elements beyond paragraphs and code", 
   assertDecl(".md", "margin-left", "0");
   assertDecl(".md", "margin-right", "auto");
   assertDecl(".md p + p", "margin-top", "\\.72em");
+  assertDecl(".color-token", "display", "inline-flex");
+  assertDecl(".color-token", "align-items", "center");
+  assertDecl(".color-token-text", "font-family", "var\\(--mono\\)");
+  assertDecl(".color-chip", "width", "1em");
+  assertDecl(".color-chip", "height", "1em");
   assertDecl(".md code", "border-radius", "4px");
   assertDecl(".md-codeblock", "background", "var\\(--surface-strong\\)");
   assertDecl(".md pre", "background", "transparent");
@@ -109,8 +114,13 @@ test("Workspace Markdown preview keeps parity with chat for rich GFM elements", 
   assert.match(messageRenderSrc, /<span className="md-code-lang">\{lang\}<\/span>/);
   assert.match(messageRenderSrc, /navigator\.clipboard\?\.writeText/);
   assert.match(messageRenderSrc, /pre\(\{ children \}\)\s*\{\s*return <CodeBlock>\{children\}<\/CodeBlock>/);
-  assert.match(membersSrc, /import \{ CodeBlock \} from "\.\.\/messageRender\.tsx"/);
-  assert.match(membersSrc, /components=\{\{ pre: \(\{ children \}\) => <CodeBlock>\{children\}<\/CodeBlock> \}\}/);
+  assert.match(membersSrc, /import \{ CodeBlock, ColorSwatch, colorValueFromTag, markdownSchema, remarkColorSwatches \} from "\.\.\/messageRender\.tsx"/);
+  assert.match(messageRenderSrc, /export function remarkColorSwatches/);
+  assert.match(messageRenderSrc, /tag:color:\$\{encodeURIComponent\(token\)\}/);
+  assert.match(membersSrc, /remarkPlugins=\{\[remarkGfm, remarkBreaks, remarkColorSwatches\]\}/);
+  assert.match(membersSrc, /rehypePlugins=\{\[\[rehypeSanitize, markdownSchema\]\]\}/);
+  assert.match(membersSrc, /ColorSwatch value=\{color\}/);
+  assert.match(membersSrc, /pre: \(\{ children \}\) => <CodeBlock>\{children\}<\/CodeBlock>/);
   assertDecl(".ws-md a", "color", "var\\(--link-blue\\)");
   assertDecl(".ws-md img", "max-width", "min\\(100%,640px\\)");
   assert.match(css, /\.ws-md\{[^}]*font-size:15px[^}]*line-height:1\.64/);
