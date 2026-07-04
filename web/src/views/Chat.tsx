@@ -25,6 +25,7 @@ const fmtSize = (n?: number) => (!n ? "" : n < 1024 ? n + " B" : n < 1048576 ? (
 const isImage = (m?: string) => !!m && m.startsWith("image/");
 const isVideo = (m?: string) => !!m && m.startsWith("video/");
 export const BACK_TO_BOTTOM_SCROLL_MS = 800;
+export const MESSAGE_ENTER_PIN_MS = 620;
 export const backToBottomEase = (t: number) => 1 - Math.pow(1 - t, 3);
 
 export function animateBackToBottom(el: Pick<HTMLDivElement, "scrollTop" | "scrollHeight">, done?: () => void) {
@@ -38,6 +39,18 @@ export function animateBackToBottom(el: Pick<HTMLDivElement, "scrollTop" | "scro
     el.scrollTop = start + delta * backToBottomEase(t);
     if (t < 1) requestAnimationFrame(step);
     else { el.scrollTop = target; done?.(); }
+  };
+  requestAnimationFrame(step);
+}
+
+export function keepPinnedToBottomDuringEnter(el: Pick<HTMLDivElement, "scrollTop" | "scrollHeight">, shouldContinue: () => boolean, durationMs = MESSAGE_ENTER_PIN_MS) {
+  const startTime = performance.now();
+  const pin = () => { el.scrollTop = el.scrollHeight; };
+  pin();
+  const step = (now: number) => {
+    if (!shouldContinue()) return;
+    pin();
+    if (now - startTime < durationMs) requestAnimationFrame(step);
   };
   requestAnimationFrame(step);
 }
@@ -223,7 +236,7 @@ export function Chat() {
     }));
     else if (e.type === "agent") setSub(e.activity ? `${e.name} · ${e.activity}${e.detail ? " · " + e.detail : ""}` : ""); // live-trace entries are accumulated globally in the store (see store.tsx agent:activity handler), so they persist across channel/DM switches
   }), [cur?.id]);
-  useEffect(() => { const el = scrollRef.current; if (!el || msgParam) return; if (atBottomRef.current) el.scrollTop = el.scrollHeight; }, [msgs, msgParam]); // auto-scroll only when already pinned to the bottom
+  useEffect(() => { const el = scrollRef.current; if (!el || msgParam) return; if (atBottomRef.current) keepPinnedToBottomDuringEnter(el, () => atBottomRef.current && !msgParam); }, [msgs, msgParam]); // auto-scroll only when already pinned to the bottom, and keep pinned while new message enter animation expands
   // Keep the viewport anchored across an older-page prepend: restore scrollTop before paint. Runs before the auto-scroll effect above, which is a no-op here anyway (a prepend only happens while scrolled up, so atBottomRef is false).
   useLayoutEffect(() => { const el = scrollRef.current; if (el && prependRestoreRef.current != null) { el.scrollTop = el.scrollHeight - prependRestoreRef.current; prependRestoreRef.current = null; } }, [msgs]);
   useEffect(() => { if (trimmedRef.current) { trimmedRef.current = false; setHasMore(true); } }, [msgs]); // a live-tail trim opened a gap at the top → older messages stay re-fetchable
