@@ -134,7 +134,7 @@ async function onAgentUpdate(serverId: string, msg: any): Promise<void> {
   if (msg.type === "agent:activity") patch.activity = msg.activity;
   await db.update(schema.agents).set(patch).where(eq(schema.agents.id, msg.agentId));
   const a = (await db.select().from(schema.agents).where(eq(schema.agents.id, msg.agentId)))[0];
-  if (a) await publish(serverId, { type: "agent", id: a.id, name: a.name, status: a.status, activity: a.activity });
+  if (a) await publish(serverId, { type: "agent", id: a.id, name: a.name, status: a.status, activity: a.activity, detail: msg.detail ?? "" });
   if (msg.type === "agent:activity") await logActivity(serverId, msg.agentId, { kind: "status", activity: msg.activity, detail: msg.detail }); // status goes into the activity log
 }
 

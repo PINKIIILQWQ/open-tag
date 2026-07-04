@@ -43,7 +43,12 @@ export function Composer({ channelId, placeholder, allowAsTask = false, dmAgent,
     const targets = new Map<string, Agent>();
     if (dmAgent) targets.set(dmAgent.id, dmAgent);
     for (const m of text.matchAll(/@([\p{L}\p{N}_-]+)/gu)) { const a = agents.find((x) => x.name === m[1]); if (a) targets.set(a.id, a); }
-    const offline = [...targets.values()].filter((a) => !a.machineId || machines.find((mc) => mc.id === a.machineId)?.status !== "online");
+    const offline = [...targets.values()].filter((a) => {
+      if (!a.machineId) return true;
+      const machine = machines.find((mc) => mc.id === a.machineId);
+      if (machine?.status !== "online") return true;
+      return !(machine.runtimes ?? []).includes(a.runtime);
+    });
     if (offline.length) return { kind: "off", names: offline.map((a) => a.displayName || a.name).join(", ") };
     if (dmAgent) { const st = dmAgent.activity || dmAgent.status; if (st === "sleeping" || st === "inactive" || st === "offline") return { kind: "sleep", names: dmAgent.displayName || dmAgent.name }; }
     return null;
