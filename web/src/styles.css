@@ -7,7 +7,7 @@
   --g-mint:#a7e5d3;--g-lav:#c8b8e0;--g-sky:#a8c8e8;--g-peach:#f4c5a8;
   /* sidecar: UI functional colors not covered by DESIGN.md primary palette, centralized as tokens to prevent scattering (error aligned with DESIGN.md semantic-error) */
   --error:#dc2626;--error-soft:#fef2f2;--error-line:#fecaca;
-  --tint-blue:#eef3fb;--tint-blue-ink:#5d7fb2;--tint-blue-strong:#d8e6f8;--link-blue:#92B6FF;
+  --tint-blue:#eef3fb;--tint-blue-ink:#5d7fb2;--tint-blue-strong:#d8e6f8;--link-blue:#7097F1;
   --channel-mention:#e5effd;--channel-mention-strong:#d5e5fa;
   --thread-mention:#e5dcf0;--thread-mention-strong:#d9cae7;--task-mention:#efd0cb;--task-mention-strong:#e5bbb4;
   --tint-lav:#f1eef9;--tint-lav-ink:#6b5aa0;
