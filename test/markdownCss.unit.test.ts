@@ -30,7 +30,7 @@ function assertDecl(selector: string, prop: string, value: string): void {
 }
 
 test("chat Markdown styles cover rich GFM elements beyond paragraphs and code", () => {
-  assertDecl(".msg", "margin", "0 auto 10px");
+  assertDecl(".msg", "margin", "0 auto 8px");
   assert.match(css, /--link-blue:#7097F1/);
   assertDecl(".md a", "color", "var\\(--link-blue\\)");
   assert.match(css, /\.md\{[^}]*font-size:15px[^}]*line-height:1\.6/);
