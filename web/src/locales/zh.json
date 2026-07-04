@@ -323,6 +323,8 @@
     "backToBottom": "回到底部",
     "machineOffline": "{{names}} —— 所在机器离线。消息已记下，机器重新连接后会自动恢复并处理。",
     "agentSleeping": "@{{name}} 正在休眠,发消息会唤醒 ta 接手。",
+    "machineOfflineComposerPlaceholder": "{{names}} 所在机器离线，重新连接前无法运行。",
+    "agentSleepingComposerPlaceholder": "@{{name}} 正在休眠，发消息会唤醒 ta 接手。",
     "memberKind": "成员",
     "taskPlaceholder": "描述任务…(发送后进 Tasks 板)",
     "dmPlaceholder": "发消息给 @{{name}}",

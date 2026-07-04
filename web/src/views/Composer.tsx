@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect, useMemo, type ChangeEvent, type ClipboardEvent as RClipboardEvent, type DragEvent as RDragEvent, type CSSProperties } from "react";
-import { ImagePlus, Paperclip, Send, CheckCircle2, Power, Moon } from "lucide-react";
+import { ImagePlus, Paperclip, Send, CheckCircle2 } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { useStore, type Agent } from "../store.tsx";
 import { Avatar, resolveAvatar } from "../Avatar.tsx";
@@ -48,6 +48,8 @@ export function Composer({ channelId, placeholder, allowAsTask = false, dmAgent,
     if (dmAgent) { const st = dmAgent.activity || dmAgent.status; if (st === "sleeping" || st === "inactive" || st === "offline") return { kind: "sleep", names: dmAgent.displayName || dmAgent.name }; }
     return null;
   }, [text, dmAgent, agents, machines]);
+  const reachPlaceholder = reach ? (reach.kind === "off" ? t("chat.machineOfflineComposerPlaceholder", { names: reach.names }) : t("chat.agentSleepingComposerPlaceholder", { name: reach.names })) : null;
+  const effectivePlaceholder = reachPlaceholder ?? (allowAsTask && asTask ? t("chat.taskPlaceholder") : placeholder);
 
   const send = async (forceTask?: boolean) => {
     const v = text.trim(); if ((!v && !pendingAtts.length) || !channelId) return;
@@ -98,9 +100,6 @@ export function Composer({ channelId, placeholder, allowAsTask = false, dmAgent,
 
   return (
     <div className={"composer" + (className ? " " + className : "")}>
-      {reach && (reach.kind === "off"
-        ? <div className="wake-hint wh-off"><Power size={13} /> {t("chat.machineOffline", { names: reach.names })}</div>
-        : <div className="wake-hint"><Moon size={13} /> {t("chat.agentSleeping", { name: reach.names })}</div>)}
       {atQuery !== null && cands.length > 0 && (
         <div className="mention-menu">
           {cands.map((c, i) => (
@@ -128,7 +127,7 @@ export function Composer({ channelId, placeholder, allowAsTask = false, dmAgent,
       <input type="file" ref={fileRef} multiple style={{ display: "none" }} onChange={onPickFiles} />
       <div className="composer-box" onDrop={onDrop} onDragOver={(e) => e.preventDefault()}>
         <textarea className="composer-input" ref={inputRef} rows={1} value={text} onChange={onInput} onPaste={onPaste}
-          placeholder={allowAsTask && asTask ? t("chat.taskPlaceholder") : placeholder}
+          placeholder={effectivePlaceholder}
           onKeyDown={(e) => {
             if (e.nativeEvent.isComposing) return; // IME composition (CJK input): Enter selects a candidate, not send
             if (atQuery !== null && cands.length) { // @ menu open: ↑/↓ move highlight, Enter/Tab pick, Esc closes

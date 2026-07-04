@@ -239,3 +239,11 @@ test("composer removes the hard divider and aligns its input with the message co
   const meta = ruleBody(".msg-meta");
   assert.match(meta, /margin-top\s*:\s*4px\b/, `reaction footer should sit closer to the last text line: ${meta}`);
 });
+
+test("composer uses reachability as placeholder instead of a separate wake hint row", () => {
+  const composerSrc = fs.readFileSync(new URL("../web/src/views/Composer.tsx", import.meta.url), "utf8");
+  assert.doesNotMatch(composerSrc, /className="wake-hint/, "wake state should no longer render as a separate row above the composer");
+  assert.match(composerSrc, /const reachPlaceholder = reach \?/, "reachability state should feed the textarea placeholder");
+  assert.match(composerSrc, /reach\.kind === "off" \? t\("chat\.machineOfflineComposerPlaceholder"/, "offline machine hint should have a composer placeholder");
+  assert.match(composerSrc, /t\("chat\.agentSleepingComposerPlaceholder"/, "sleeping agent hint should have a composer placeholder");
+});
