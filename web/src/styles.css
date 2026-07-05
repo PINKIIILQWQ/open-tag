@@ -581,6 +581,10 @@ aside.traj-col h2{position:relative;font-size:12px;font-weight:600;letter-spacin
 .msg-head .ts{margin-left:0;flex:none}
 .msg-subhead{display:flex;align-items:center;gap:7px;min-width:0;margin-top:2px;color:var(--muted-soft)}
 .msg-subhead + .mbody{margin-top:8px}
+.agent-reply-placeholder{color:#8f949b;font-size:14px;font-weight:700;font-style:normal;background:linear-gradient(90deg,#b9bdc2 0%,#b9bdc2 46%,#fff 50%,#b9bdc2 54%,#b9bdc2 100%);background-size:300% 100%;background-position:100% 0;-webkit-background-clip:text;background-clip:text;color:transparent;animation:agent-thinking-shimmer 4s linear infinite}
+.agent-reply-placeholder.done{animation:none;color:var(--muted-soft);background:none}
+.agent-reply-placeholder.error{color:var(--status-red);font-style:normal;background:none;animation:none}
+@keyframes agent-thinking-shimmer{0%{background-position:100% 0}50%{background-position:0% 0}100%{background-position:0% 0}}
 .msg-activity{flex:none;font-family:var(--mono);font-size:11px;line-height:1.35;color:var(--muted);background:var(--status-badge-bg);border:0;border-radius:5px;padding:1px 5px;white-space:nowrap}
 .msg-activity.sleeping{color:var(--status-blue);background:var(--status-badge-bg)}
 .msg-activity.online,.msg-activity.active{color:var(--status-green);background:var(--status-badge-bg)}

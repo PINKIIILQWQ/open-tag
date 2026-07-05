@@ -175,6 +175,10 @@ export function serializeMsg(msg: typeof schema.messages.$inferSelect, mentions:
   };
 }
 
+export function agentReplyStreamId(messageId: string, agentId: string): string {
+  return `${messageId}:${agentId}`;
+}
+
 async function publishThreadUpdated(
   serverId: string,
   ch: typeof schema.channels.$inferSelect | undefined,
@@ -463,7 +467,9 @@ export async function createMessage(opts: {
       log.warn("agent wake skipped", { agentId: mem.id, reason: started.reason ?? "start failed" });
       continue;
     }
-    sendAgentControl(opts.serverId, started.machineId, { type: "agent:deliver", agentId: mem.id, seq, from: opts.senderName, target: opts.channelId, targetName, msgShort, isTask: !!opts.asTask, message: { content: opts.content }, mentioned });
+    const replyStreamId = agentReplyStreamId(msg!.id, mem.id);
+    await publish(opts.serverId, { type: "agent:reply", agentId: mem.id, channelId: opts.channelId, streamId: replyStreamId, name: mem.displayName || mem.name, triggerMessageId: msg!.id, op: "start" });
+    sendAgentControl(opts.serverId, started.machineId, { type: "agent:deliver", agentId: mem.id, seq, from: opts.senderName, target: opts.channelId, targetName, msgShort, isTask: !!opts.asTask, message: { content: opts.content }, mentioned, streamId: replyStreamId });
     woken.push(mem.name + (mentioned ? "(@)" : ""));
   }
   log.info("message created", {

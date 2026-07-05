@@ -74,6 +74,22 @@ test("message body has breathing room after the second header line", () => {
   assert.match(body, /margin-top\s*:\s*8px\b/, `message body should not sit tight against the second header line: ${body}`);
 });
 
+test("markdown body line height and agent thinking placeholder stay readable", () => {
+  assert.match(css, /--md-line-height:1\.68\b/, "Markdown body line height should favor bilingual readability");
+
+  const thinking = ruleBody(".agent-reply-placeholder");
+  assert.match(thinking, /font-weight\s*:\s*700\b/, `thinking text should be bold enough to read: ${thinking}`);
+  assert.match(thinking, /font-style\s*:\s*normal\b/, `thinking text should not be italic: ${thinking}`);
+  assert.match(thinking, /color\s*:\s*#8f949b\b/, `thinking text should use a silver-gray base tone: ${thinking}`);
+  assert.match(thinking, /animation\s*:\s*agent-thinking-shimmer/, `thinking text should use a subtle GPT-style shimmer: ${thinking}`);
+  assert.match(thinking, /4s linear infinite\b/, `thinking shimmer should loop every 4s with a constant-speed sweep: ${thinking}`);
+
+  assert.doesNotMatch(css, /\.agent-reply-placeholder::after/, "thinking dots should be part of the localized text so they share the shimmer");
+  assert.match(css, /@keyframes agent-thinking-shimmer/);
+  assert.match(css, /@keyframes agent-thinking-shimmer\{0%\{background-position:100% 0\}50%\{background-position:0% 0\}100%\{background-position:0% 0\}\}/, "thinking shimmer should sweep left-to-right for 2s, then pause until the next 4s cycle");
+  assert.doesNotMatch(css, /@keyframes agent-thinking-dots/);
+});
+
 test("agent activity badge uses a quiet code style without colored outline", () => {
   const body = ruleBody(".msg-activity");
   assert.match(body, /border\s*:\s*0\b/, `activity badge must not draw a colored outline: ${body}`);

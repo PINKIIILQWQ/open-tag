@@ -4,6 +4,7 @@ import { useTranslation } from "react-i18next";
 import i18n from "../i18n";
 import { useStore, fmtTime, type Msg, type Att } from "../store.tsx";
 import { PAGE_SIZE, appendWithCap, nextScrollState } from "../lib/msgPaging";
+import { AGENT_REPLY_PREVIEW_TYPE, AGENT_REPLY_STREAM_TICK_MS, absorbPersistedAgentMessagePreview, applyAgentReplyPreview, dropAgentReplyPreviewsForMessage, hasStreamingAgentReplyPreview, renderKeyForMessage, tickAgentReplyPreviews, type AgentReplyEvent, type AgentReplyPreviewMsg } from "../lib/agentReplyPreview";
 import { MessageContent } from "../messageRender.tsx";
 import { nextThreadMeta } from "../threadUnread";
 import { Smile, X, ExternalLink, CheckCircle2, MessageCircle, MoreHorizontal, Link2, Clipboard, Bookmark, CheckSquare, Circle, Play, Eye, Ban, ArrowDown, BellOff, Lock, Globe, Archive, Trash2 } from "lucide-react";
@@ -41,6 +42,18 @@ export function animateBackToBottom(el: Pick<HTMLDivElement, "scrollTop" | "scro
     else { el.scrollTop = target; done?.(); }
   };
   requestAnimationFrame(step);
+}
+
+function AgentReplyPreviewBody({ m }: { m: Msg }) {
+  const { t } = useTranslation();
+  const preview = m as AgentReplyPreviewMsg;
+  const done = !!preview.streamDone && !preview.streamError;
+  if (!preview.streamError && !done && !preview.streamThinkingVisible) return null;
+  return (
+    <div className={"mbody agent-reply-placeholder" + (preview.streamError ? " error" : done ? " done" : "")} aria-live="polite">
+      {preview.streamError ? t("chat.agentReplyError") : done ? t("chat.agentThinkingDone") : t("chat.agentThinking")}
+    </div>
+  );
 }
 
 export function keepPinnedToBottomDuringEnter(el: Pick<HTMLDivElement, "scrollTop" | "scrollHeight">, shouldContinue: () => boolean, durationMs = MESSAGE_ENTER_PIN_MS) {
@@ -155,6 +168,7 @@ export function Chat() {
   const [unreadThreads, setUnreadThreads] = useState<{ threadChannelId: string; parentMessageId: string; parentChannelId: string; unreadCount: number }[]>([]); // unread that lives in this channel's threads (invisible in the main timeline) → "jump to unread thread" bar
   const scrollRef = useRef<HTMLDivElement>(null);
   const atBottomRef = useRef(true); // tracks whether the scroll position is at the bottom; new messages auto-scroll only when already at the bottom, preserving history browsing
+  const forceBottomPinRef = useRef(false); // own sends + agent previews should return the viewport to the live tail even if overlay height made atBottom stale
   const [showJump, setShowJump] = useState(false); // when not at the bottom, show the "Back to bottom" jump button
   const showJumpRef = useRef(false);
   const scrollingToBottomRef = useRef(false); // suppress jump-button flicker while the 0.8s smooth scroll is in progress
@@ -253,15 +267,27 @@ export function Chat() {
     // eslint-disable-next-line
   }, [agentPanelReq]);
   useEffect(() => onEvent((e) => {
-    if (e.type === "message" && e.channelId === cur?.id) { const idx = Math.min(burstCountRef.current, 7); newMsgOrderRef.current.set(e.message.id, idx); burstCountRef.current += 1; if (burstTimerRef.current) clearTimeout(burstTimerRef.current); burstTimerRef.current = setTimeout(() => { burstCountRef.current = 0; burstTimerRef.current = null; }, 600); setMsgs((m) => { const { next, trimmed } = appendWithCap(m, e.message, atBottomRef.current && !loadingOlderRef.current); if (trimmed) trimmedRef.current = true; return next; }); markRead(cur.id); } // don't trim mid-pagination: a trim's setHasMore(true) would race the in-flight loadOlder's setHasMore — suppressing it closes the window (the next message trims instead)
+    if (e.type === "message" && e.channelId === cur?.id) { if (e.message.senderType === "user" && e.message.senderId === me?.id) forceBottomPinRef.current = true; setMsgs((m) => { const preview = absorbPersistedAgentMessagePreview(m, e.message); if (preview.consumed) { forceBottomPinRef.current = true; newMsgOrderRef.current.delete(e.message.id); return preview.messages; } const idx = Math.min(burstCountRef.current, 7); newMsgOrderRef.current.set(e.message.id, idx); burstCountRef.current += 1; if (burstTimerRef.current) clearTimeout(burstTimerRef.current); burstTimerRef.current = setTimeout(() => { burstCountRef.current = 0; burstTimerRef.current = null; }, 600); const { next, trimmed } = appendWithCap(dropAgentReplyPreviewsForMessage(m, e.message), e.message, atBottomRef.current && !loadingOlderRef.current); if (trimmed) trimmedRef.current = true; return next; }); markRead(cur.id); } // don't trim mid-pagination: a trim's setHasMore(true) would race the in-flight loadOlder's setHasMore — suppressing it closes the window (the next message trims instead)
     else if (e.type === "message:updated" && e.message) setMsgs((m) => m.map((x) => (x.id === e.message.id ? { ...x, ...e.message } : x))); // sync reactions and task fields
+    else if (e.type === "agent:reply" && e.channelId === cur?.id) { forceBottomPinRef.current = true; setMsgs((m) => applyAgentReplyPreview(m, e as AgentReplyEvent, agents.find((a) => a.id === e.agentId))); }
     else if (e.type === "thread:updated" && e.parentMessageId) setThreadMeta((tm) => ({ // live reply count update; unreadCount is approximated from the replyCount delta (the authoritative value is corrected on channel switch via GET)
       ...tm,
       [e.parentMessageId]: nextThreadMeta(tm[e.parentMessageId], { threadChannelId: e.threadChannelId, replyCount: e.replyCount, senderId: e.senderId }, me?.id),
     }));
-    else if (e.type === "agent") setSub(e.activity ? `${e.name} · ${e.activity}${e.detail ? " · " + e.detail : ""}` : ""); // live-trace entries are accumulated globally in the store (see store.tsx agent:activity handler), so they persist across channel/DM switches
-  }), [cur?.id]);
-  useEffect(() => { const el = scrollRef.current; if (!el || msgParam) return; if (atBottomRef.current) keepPinnedToBottomDuringEnter(el, () => atBottomRef.current && !msgParam); }, [msgs, msgParam]); // auto-scroll only when already pinned to the bottom, and keep pinned while new message enter animation expands
+  }), [cur?.id, agents, me?.id]);
+  const streamingPreviewActive = hasStreamingAgentReplyPreview(msgs);
+  useEffect(() => {
+    if (!streamingPreviewActive) return;
+    const timer = window.setInterval(() => {
+      setMsgs((m) => {
+        const tick = tickAgentReplyPreviews(m);
+        if (tick.changed) forceBottomPinRef.current = true;
+        return tick.changed ? tick.messages : m;
+      });
+    }, AGENT_REPLY_STREAM_TICK_MS);
+    return () => window.clearInterval(timer);
+  }, [streamingPreviewActive]);
+  useEffect(() => { const el = scrollRef.current; if (!el || msgParam) return; const force = forceBottomPinRef.current; if (force) { forceBottomPinRef.current = false; atBottomRef.current = true; setJumpVisible(false); } if (force || atBottomRef.current) keepPinnedToBottomDuringEnter(el, () => !msgParam && (force || atBottomRef.current)); }, [msgs, msgParam]); // auto-scroll when already pinned; own sends and agent previews force the live tail so users do not drag the scrollbar manually
   // Keep the viewport anchored across an older-page prepend: restore scrollTop before paint. Runs before the auto-scroll effect above, which is a no-op here anyway (a prepend only happens while scrolled up, so atBottomRef is false).
   useLayoutEffect(() => { const el = scrollRef.current; if (el && prependRestoreRef.current != null) { el.scrollTop = el.scrollHeight - prependRestoreRef.current; prependRestoreRef.current = null; } }, [msgs]);
   useEffect(() => { if (trimmedRef.current) { trimmedRef.current = false; setHasMore(true); } }, [msgs]); // a live-tail trim opened a gap at the top → older messages stay re-fetchable
@@ -395,6 +421,9 @@ export function Chat() {
                 const tm = threadMeta[m.id];
                 const isMember = m.senderType !== "agent" && m.senderType !== "system"; // human/user senders get a "member" badge
                 const isSaved = savedIds.has(m.id);
+                const isAgentReplyPreview = m.messageType === AGENT_REPLY_PREVIEW_TYPE;
+                const agentReplyPreview = isAgentReplyPreview ? m as AgentReplyPreviewMsg : undefined;
+                if (agentReplyPreview && !agentReplyPreview.streamVisible) return null;
                 // action card (agent proposal card) → rendered by dedicated ActionCardMsg component
                 if (m.messageType === "action" && m.actionMetadata?.kind === "action-card") return <ActionCardMsg m={m} key={m.id} />;
                 // system messages (task lifecycle events, etc.) → centered grey bar (no avatar, no full message block)
@@ -407,8 +436,9 @@ export function Chat() {
                 );
                 const staggerIdx = newMsgOrderRef.current.get(m.id);
                 const isNewMsg = staggerIdx !== undefined;
+                const shouldEnter = isNewMsg || !!agentReplyPreview;
                 return (
-                <div className={"msg" + (isNewMsg ? " msg-enter" : "")} id={"m-" + m.id} key={m.id} onContextMenu={(e) => { e.preventDefault(); setCtxMenu({ m, x: e.clientX, y: e.clientY }); }} style={isNewMsg ? { "--msg-delay": `${staggerIdx * 60}ms` } as CSSProperties : undefined}>
+                <div className={"msg" + (shouldEnter ? " msg-enter" : "")} id={"m-" + m.id} key={renderKeyForMessage(m)} onContextMenu={(e) => { e.preventDefault(); setCtxMenu({ m, x: e.clientX, y: e.clientY }); }} style={isNewMsg ? { "--msg-delay": `${staggerIdx * 60}ms` } as CSSProperties : undefined}>
                   <div className="msg-toolbar">
                     <button className={isSaved ? "on" : ""} title={isSaved ? t("chat.unsave") : t("chat.saveMessage")} onClick={() => { isSaved ? unsaveMsg(m.id) : saveMsg(m.id); }}><Bookmark size={15} fill={isSaved ? "currentColor" : "none"} /></button>
                     <button title={t("chat.copyMarkdown")} onClick={() => copyMarkdown(m.content)}><Clipboard size={15} /></button>
@@ -420,7 +450,7 @@ export function Chat() {
                         onMouseLeave={() => setHoverAgent(null)}><Avatar seed={m.senderName} url={senderAvatar(m)} size={36} />{agLive !== "offline" && <span className={"av-status " + agLive} />}</span>
                     : m.senderId
                       ? <span className="msg-av clickable" onClick={() => setProfile({ type: "human", id: m.senderId! })}><Avatar seed={m.senderName} url={senderAvatar(m)} size={36} /></span>
-                      : <Avatar seed={m.senderName} url={senderAvatar(m)} size={36} />}
+                      : <span className="msg-av"><Avatar seed={m.senderName} url={senderAvatar(m)} size={36} /></span>}
                   <div className="msg-col">
                     <div className="msg-head">
                       {ag
@@ -436,7 +466,9 @@ export function Chat() {
                       {ag.description ? <span className="msg-role">{ag.description}</span> : null}
                     </div> : null}
                     {isMember ? <div className="msg-subhead"><span className="member-badge">member</span></div> : null}
-                    {!!m.content && <div className="mbody"><MessageContent content={m.content} mentions={m.mentions || []} channels={channels} nav={navToken} /></div>}
+                    {isAgentReplyPreview && !m.content
+                      ? <AgentReplyPreviewBody m={m} />
+                      : !!m.content && <div className="mbody"><MessageContent content={m.content} mentions={m.mentions || []} channels={channels} nav={navToken} /></div>}
                     {!!m.attachments?.length && <div className="msg-atts">{m.attachments.map((a) => <AttCard key={a.id} a={a} url={attachmentUrl(a.id)} />)}</div>}
                     {/* persistent meta row: task badge + thread button + reactions all on the same line (reactions no longer occupy a separate row) */}
                     <div className="msg-meta">
@@ -610,16 +642,35 @@ function ThreadPanel({ channelId, parent, onClose, onOpenProfile }: { channelId:
   const scrollRef = useRef<HTMLDivElement>(null);
   useEffect(() => { subscribeChannel(channelId); (async () => { const d = await api("GET", `/api/messages/channel/${channelId}?limit=200`); setMsgs(d.messages || []); })(); }, [channelId]); // join the thread room so replies arrive live (openThread/startThread do not make the socket a room member on their own)
   useEffect(() => onEvent((e) => {
-    if (e.type === "message" && e.channelId === channelId) setMsgs((m) => [...m, e.message]);
+    if (e.type === "message" && e.channelId === channelId) setMsgs((m) => {
+      const preview = absorbPersistedAgentMessagePreview(m, e.message);
+      if (preview.consumed) return preview.messages;
+      return [...dropAgentReplyPreviewsForMessage(m, e.message), e.message];
+    });
     else if (e.type === "message:updated" && e.message?.channelId === channelId) setMsgs((m) => m.map((x) => (x.id === e.message.id ? { ...x, ...e.message } : x)));
-  }), [channelId]);
+    else if (e.type === "agent:reply" && e.channelId === channelId) setMsgs((m) => applyAgentReplyPreview(m, e as AgentReplyEvent, agents.find((a) => a.id === e.agentId)));
+  }), [channelId, agents]);
+  const streamingPreviewActive = hasStreamingAgentReplyPreview(msgs);
+  useEffect(() => {
+    if (!streamingPreviewActive) return;
+    const timer = window.setInterval(() => {
+      setMsgs((m) => {
+        const tick = tickAgentReplyPreviews(m);
+        return tick.changed ? tick.messages : m;
+      });
+    }, AGENT_REPLY_STREAM_TICK_MS);
+    return () => window.clearInterval(timer);
+  }, [streamingPreviewActive]);
   useEffect(() => { if (scrollRef.current) scrollRef.current.scrollTop = scrollRef.current.scrollHeight; }, [msgs]);
   const row = (m: Msg) => {
     if (m.senderType === "system") return <div className="msg-sys" id={"m-" + m.id} key={m.id}>{m.content}</div>; // system messages render as a banner with no avatar
     const ag = m.senderType === "agent" && m.senderId ? agents.find((a) => a.id === m.senderId) : undefined; // agent sender → avatar and name are clickable to open the profile panel
     const live = ag ? ((ag.activity && ag.activity !== "offline" ? ag.activity : ag.status) || "offline") : "offline";
+    const isAgentReplyPreview = m.messageType === AGENT_REPLY_PREVIEW_TYPE;
+    const agentReplyPreview = isAgentReplyPreview ? m as AgentReplyPreviewMsg : undefined;
+    if (agentReplyPreview && !agentReplyPreview.streamVisible) return null;
     return (
-    <div className="msg" key={m.id}>
+    <div className={"msg" + (agentReplyPreview ? " msg-enter" : "")} key={renderKeyForMessage(m)}>
       {ag ? <span className="msg-av clickable" onClick={() => onOpenProfile("agent", m.senderId!)}><Avatar seed={m.senderName} url={senderAvatar(m)} size={32} />{live !== "offline" && <span className={"av-status " + live} />}</span>
         : m.senderId ? <span className="msg-av clickable" onClick={() => onOpenProfile("human", m.senderId!)}><Avatar seed={m.senderName} url={senderAvatar(m)} size={32} /></span>
         : <Avatar seed={m.senderName} url={senderAvatar(m)} size={32} />}
@@ -628,7 +679,9 @@ function ThreadPanel({ channelId, parent, onClose, onOpenProfile }: { channelId:
         <div>{ag ? <span className="who clickable" onClick={() => onOpenProfile("agent", m.senderId!)}>{m.senderName}</span>
           : m.senderId ? <span className="who clickable" onClick={() => onOpenProfile("human", m.senderId!)}>{m.senderName}</span>
           : <span className="who">{m.senderName}</span>}<span className="ts">{fmtTime(m.createdAt)}</span></div>
-        {!!m.content && <div className="mbody"><MessageContent content={m.content} mentions={m.mentions || []} channels={channels} nav={navToken} /></div>}
+        {isAgentReplyPreview && !m.content
+          ? <AgentReplyPreviewBody m={m} />
+          : !!m.content && <div className="mbody"><MessageContent content={m.content} mentions={m.mentions || []} channels={channels} nav={navToken} /></div>}
         {!!m.attachments?.length && <div className="msg-atts">{m.attachments.map((a) => <AttCard key={a.id} a={a} url={attachmentUrl(a.id)} />)}</div>}
         <Reactions m={m} mine={me?.id ?? ""} onReact={(emoji, remove) => react(m.id, emoji, remove)} />
       </div>
