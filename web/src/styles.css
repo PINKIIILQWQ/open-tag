@@ -11,7 +11,16 @@
   --on-ink:#fff;--mention:#fdf2d6;--scrim:rgba(12,10,9,.4);
   /* Shadow scale (elevation depth): black at varying opacity, centralized as tokens to prevent scattering (same sidecar approach); used for box-shadow on overlays/cards/menus */
   --shadow-1:rgba(0,0,0,.05);--shadow-2:rgba(0,0,0,.1);--shadow-3:rgba(0,0,0,.12);--shadow-4:rgba(0,0,0,.16);--shadow-5:rgba(0,0,0,.25);--shadow-6:rgba(0,0,0,.3);--shadow-7:rgba(0,0,0,.45);
-  --serif:'EB Garamond','Times New Roman',serif;--sans:'Inter',-apple-system,'PingFang SC','Segoe UI',sans-serif;
+  --serif:'EB Garamond','Times New Roman',serif;--sans:'Inter',-apple-system,'PingFang SC','Segoe UI',sans-serif;--mono:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
+  /* Markdown rendering sidecar tokens: scoped to .md/.ws-md so app chrome keeps the existing palette/layout contract. */
+  --link-blue:#7097F1;--quote-text:#8f8881;--done-text:#9b9690;
+  --channel-mention:#e7f0ff;--channel-mention-strong:#dbe8ff;
+  --thread-mention:#eee4f5;--thread-mention-strong:#e5d6f0;
+  --task-mention:#f5ddd9;--task-mention-strong:#efcbc5;
+  --human-mention:#fde9ec;--human-mention-strong:#fad9df;
+  --alert-note:#92B6FF;--alert-tip:#72bd8f;--alert-important:#a98ad5;--alert-warning:#d9ad2b;--alert-caution:#d67b72;
+  --read-measure:76ch;--md-text-size:14.5px;--md-line-height:1.68;--md-paragraph-gap:.75em;
+  --md-h1-size:1.4em;--md-h2-size:1.25em;--md-h3-size:1.12em;--md-h-rest-size:1em;
   /* Motion tokens — app shell (not landing page --lp-* system) */
   --ease-quint: cubic-bezier(.22, 1, .36, 1);
   --ease-expo:  cubic-bezier(.16, 1, .3, 1);
@@ -223,16 +232,33 @@ main.content-col{display:flex;flex-direction:column;height:100vh;background:var(
    line breaks in code blocks. */
 .mbody{white-space:pre-wrap;color:var(--body);overflow-wrap:anywhere}
 /* Message body markdown (MessageContent .md): react-markdown+remark-breaks already structures line breaks, explicit white-space:normal overrides pre-wrap inherited from .mbody — otherwise consecutive blank lines/paragraphs are double-preserved and inflate height (diagnosed: .md inherits pre-wrap + p default 16px margin → 3 paragraphs = 176px). Paragraph/list spacing tightened for compact body; code blocks retain their own line breaks */
-.md{white-space:normal}
+.md{white-space:normal;font-size:var(--md-text-size);line-height:var(--md-line-height);max-width:min(100%,var(--read-measure));--inline-code-size:.9em}
 .md > :first-child{margin-top:0}.md > :last-child{margin-bottom:0}
-.md p{margin:0}.md p + p{margin-top:.45em}
-.md ul,.md ol{margin:.3em 0;padding-left:1.4em}.md li{margin:.1em 0}
-.md h1,.md h2,.md h3{font-family:var(--serif);color:var(--ink);line-height:1.25;margin:.6em 0 .3em}
-.md h1{font-size:1.3em}.md h2{font-size:1.15em}.md h3{font-size:1.05em}
-.md code{font-family:ui-monospace,monospace;font-size:.9em;background:var(--surface-strong);border-radius:4px;padding:1px 5px}
-.md pre{white-space:pre-wrap;background:var(--surface-strong);border:1px solid var(--hair);border-radius:8px;padding:10px 12px;overflow:auto;margin:.4em 0}
-.md pre code{background:none;padding:0}
-.md blockquote{border-left:1px solid var(--hair-strong);margin:.4em 0;padding-left:12px;color:var(--muted)}
+.md p{margin:0}.md p + p{margin-top:var(--md-paragraph-gap)}
+.md ul,.md ol{margin:.65em 0;padding-left:1.1em}.md li{margin:.18em 0;position:relative;padding-left:1.38em}
+.md h1,.md h2,.md h3,.md h4,.md h5,.md h6{font-family:var(--serif);color:var(--ink);font-weight:600;line-height:1.28;margin:1.1em 0 .45em}
+.md h1{font-size:var(--md-h1-size);margin-top:1.35em}.md h2{font-size:var(--md-h2-size)}.md h3{font-size:var(--md-h3-size)}.md h4,.md h5,.md h6{font-size:var(--md-h-rest-size);color:var(--muted)}
+.md > h1:first-child{margin-top:.45em}
+.md strong,.md b{font-weight:700;color:var(--ink)}
+.md a{color:var(--link-blue);text-underline-offset:2px}
+.md code,.md .color-token-text{font-family:var(--mono);font-size:var(--inline-code-size);line-height:inherit;background:var(--surface-strong);border-radius:4px;padding:1px 5px}
+.md pre{white-space:pre-wrap;background:transparent;border:0;border-radius:0;padding:12px 16px;overflow:auto;margin:0}
+.md pre code{background:none;padding:0;font-size:1em}
+.md-codeblock{position:relative;background:var(--surface-strong);border-radius:8px;margin:.75em 0;overflow:hidden}
+.md-codebar{height:32px;display:flex;align-items:center;justify-content:space-between;border-bottom:1px solid var(--hair);padding:0 10px 0 14px}
+.md-code-lang{font-family:var(--mono);font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.04em}
+.md-code-copy{width:26px;height:26px;display:inline-flex;align-items:center;justify-content:center;border:0;background:transparent;color:var(--muted);border-radius:6px;cursor:pointer}
+.md-code-copy:hover{background:var(--surface);color:var(--ink)}
+.md blockquote{border-left:4px solid var(--hair-strong);margin:.75em 0;padding:8px 18px;color:var(--quote-text);background:rgba(245,245,245,.45);border-radius:0 8px 8px 0}
+.md blockquote.github-alert{--alert-color:var(--alert-note);border-left-color:var(--alert-color);background:transparent}
+.github-alert-title{display:flex;align-items:center;gap:8px;margin-bottom:.35em;font-size:1em;font-weight:700;color:var(--alert-color)}
+.github-alert-title svg{stroke:currentColor;flex:none}
+.md blockquote.github-alert-note{--alert-color:var(--alert-note)}.md blockquote.github-alert-tip{--alert-color:var(--alert-tip)}.md blockquote.github-alert-important{--alert-color:var(--alert-important)}.md blockquote.github-alert-warning{--alert-color:var(--alert-warning)}.md blockquote.github-alert-caution{--alert-color:var(--alert-caution)}
+.md table{border-collapse:collapse;margin:.75em 0;background:transparent}.md th,.md td{border:1px solid var(--hair-strong);padding:5px 12px;font-size:.94em;overflow-wrap:anywhere}.md th{background:var(--surface-strong);font-weight:700}.md hr{border:0;border-top:1px solid var(--hair-strong);margin:1em 0}.md img{max-width:min(100%,640px);height:auto;border-radius:6px}.md kbd{font-family:var(--mono);font-size:.86em;background:var(--surface-strong);border:1px solid var(--hair-strong);border-bottom-width:2px;border-radius:4px;padding:1px 5px}.md mark{background:var(--mention);color:var(--ink);padding:0 3px;border-radius:4px}
+.md ul{list-style:none}.md ul > li:not(.task-list-item)::before{content:"";position:absolute;left:.08em;top:.79em;width:.38em;height:.38em;border-radius:9999px;background:currentColor;transform:translateY(-50%)}.md ul ul > li:not(.task-list-item)::before{background:transparent;border:1.5px solid currentColor}.md ul ul ul > li:not(.task-list-item)::before{border-radius:2px;background:currentColor}.md ul ul ul ul > li:not(.task-list-item)::before{background:transparent;border:1.5px solid currentColor;border-radius:2px}
+.md ol{list-style:none;counter-reset:md-ol}.md ol > li{counter-increment:md-ol}.md ol > li::before{content:counter(md-ol) ".";position:absolute;left:-.05em;top:0;width:1.05em;height:1.6em;display:flex;align-items:center;justify-content:center;color:var(--muted)}
+.md ul.contains-task-list{padding-left:1.1em}.md li.task-list-item{list-style:none;margin-left:0}.md li.task-list-item input[type="checkbox"]{position:absolute;left:.025em;top:.42em}.md del{color:var(--done-text);text-decoration-color:var(--done-text)}.md li.task-list-item:has(input[type="checkbox"]:checked){color:var(--done-text);text-decoration:line-through;text-decoration-color:var(--done-text)}
+.color-token{display:inline;white-space:nowrap;vertical-align:baseline}.color-token-text{color:var(--ink-2)}.color-chip{box-sizing:border-box;display:inline-block;width:.95em;height:.95em;margin-left:6px;border-radius:4px;border:1px solid var(--hair-strong);vertical-align:-.12em}
 .mention{color:var(--ink);font-weight:600;background:var(--mention);border-radius:4px;padding:0 3px}
 .composer{position:relative;padding:16px 28px 22px;border-top:1px solid var(--hair)}
 .showcase-readonly{display:flex;align-items:center;gap:8px;padding:14px 28px 18px;border-top:1px solid var(--hair);font-size:13px;color:var(--muted);font-style:italic}
@@ -402,17 +428,21 @@ main.content-col{display:flex;flex-direction:column;height:100vh;background:var(
 .ws-toggle button{border:none;background:var(--surface);color:var(--muted);font-size:11px;font-weight:600;padding:2px 10px;cursor:pointer;font-family:var(--sans)}
 .ws-toggle button.on{background:var(--ink);color:var(--on-ink)}
 /* Workspace .md rendering (reuses editorial typography, file viewer: no @ mention links) */
-.ws-md{font-size:14px;line-height:1.65;color:var(--body);max-width:760px}
-.ws-md h1,.ws-md h2,.ws-md h3{font-family:var(--serif);color:var(--ink);line-height:1.25;margin:1.1em 0 .4em}
-.ws-md h1{font-size:1.5em}.ws-md h2{font-size:1.25em}.ws-md h3{font-size:1.08em}
-.ws-md p{margin:.5em 0}.ws-md ul,.ws-md ol{margin:.4em 0;padding-left:1.4em}.ws-md li{margin:.15em 0}
-.ws-md code{font-family:ui-monospace,monospace;font-size:.88em;background:var(--surface-strong);border-radius:4px;padding:1px 5px}
-.ws-md pre{background:var(--surface-strong);border:1px solid var(--hair);border-radius:8px;padding:12px 14px;overflow:auto}
-.ws-md pre code{background:none;padding:0}
-.ws-md a{color:var(--tint-blue-ink);text-underline-offset:2px}
-.ws-md blockquote{border-left:1px solid var(--hair-strong);margin:.6em 0;padding-left:12px;color:var(--muted)}
-.ws-md table{border-collapse:collapse;margin:.6em 0}.ws-md th,.ws-md td{border:1px solid var(--hair-strong);padding:4px 10px;font-size:.92em}
-.ws-md hr{border:none;border-top:1px solid var(--hair);margin:1em 0}
+.ws-md{font-size:var(--md-text-size);line-height:var(--md-line-height);color:var(--body);max-width:760px;--inline-code-size:.88em}
+.ws-md h1,.ws-md h2,.ws-md h3,.ws-md h4,.ws-md h5,.ws-md h6{font-family:var(--serif);color:var(--ink);font-weight:600;line-height:1.28;margin:1.1em 0 .45em}
+.ws-md h1{font-size:var(--md-h1-size);margin-top:1.35em}.ws-md h2{font-size:var(--md-h2-size)}.ws-md h3{font-size:var(--md-h3-size)}.ws-md h4,.ws-md h5,.ws-md h6{font-size:var(--md-h-rest-size);color:var(--muted)}
+.ws-md p{margin:0}.ws-md p + p{margin-top:var(--md-paragraph-gap)}.ws-md ul,.ws-md ol{margin:.65em 0;padding-left:1.05em}.ws-md li{margin:.18em 0;position:relative;padding-left:1.36em}
+.ws-md code,.ws-md .color-token-text{font-family:var(--mono);font-size:var(--inline-code-size);line-height:inherit;background:var(--surface-strong);border-radius:4px;padding:1px 5px}
+.ws-md pre{background:var(--surface-strong);border:0;border-radius:8px;padding:14px 18px;overflow:auto}
+.ws-md pre code{background:none;padding:0;font-size:1em}
+.ws-md a{color:var(--link-blue);text-underline-offset:2px}
+.ws-md blockquote{border-left:4px solid var(--hair-strong);margin:.75em 0;padding:9px 19px;color:var(--quote-text);background:rgba(245,245,245,.45);border-radius:0 8px 8px 0}
+.ws-md blockquote.github-alert{--alert-color:var(--alert-note);border-left-color:var(--alert-color);background:transparent}
+.ws-md blockquote.github-alert-note{--alert-color:var(--alert-note)}.ws-md blockquote.github-alert-tip{--alert-color:var(--alert-tip)}.ws-md blockquote.github-alert-important{--alert-color:var(--alert-important)}.ws-md blockquote.github-alert-warning{--alert-color:var(--alert-warning)}.ws-md blockquote.github-alert-caution{--alert-color:var(--alert-caution)}
+.ws-md table{border-collapse:collapse;margin:.75em 0;background:transparent}.ws-md th,.ws-md td{border:1px solid var(--hair-strong);padding:5px 12px;font-size:.94em;overflow-wrap:anywhere}.ws-md th{background:var(--surface-strong);font-weight:700}.ws-md hr{border:none;border-top:1px solid var(--hair-strong);margin:1em 0}.ws-md img{max-width:min(100%,640px);height:auto;border-radius:6px}.ws-md kbd{font-family:var(--mono);font-size:.86em;background:var(--surface-strong);border:1px solid var(--hair-strong);border-bottom-width:2px;border-radius:4px;padding:1px 5px}.ws-md mark{background:var(--mention);color:var(--ink);padding:0 3px;border-radius:4px}
+.ws-md ul{list-style:none}.ws-md ul > li:not(.task-list-item)::before{content:"";position:absolute;left:.08em;top:.82em;width:.38em;height:.38em;border-radius:9999px;background:currentColor;transform:translateY(-50%)}.ws-md ul ul > li:not(.task-list-item)::before{background:transparent;border:1.5px solid currentColor}.ws-md ul ul ul > li:not(.task-list-item)::before{border-radius:2px;background:currentColor}.ws-md ul ul ul ul > li:not(.task-list-item)::before{background:transparent;border:1.5px solid currentColor;border-radius:2px}
+.ws-md ol{list-style:none;counter-reset:ws-md-ol}.ws-md ol > li{counter-increment:ws-md-ol}.ws-md ol > li::before{content:counter(ws-md-ol) ".";position:absolute;left:-.05em;top:0;width:1.05em;height:1.64em;display:flex;align-items:center;justify-content:center;color:var(--muted)}
+.ws-md ul.contains-task-list{padding-left:1.05em}.ws-md li.task-list-item{list-style:none;margin-left:0}.ws-md li.task-list-item input[type="checkbox"]{position:absolute;left:.025em;top:.46em}.ws-md del{color:var(--done-text);text-decoration-color:var(--done-text)}.ws-md li.task-list-item:has(input[type="checkbox"]:checked){color:var(--done-text);text-decoration:line-through;text-decoration-color:var(--done-text)}
 .kv{display:flex;align-items:center;gap:8px;font-size:14px;margin-top:6px}.kv b{color:var(--muted);font-weight:600;min-width:88px;flex:none}
 .kv-v{display:inline-flex;align-items:center;gap:6px}
 /* .empty: inline placeholder for sidebar lists / sub-section bodies. Uses --muted (not --muted-soft) so
@@ -733,8 +763,15 @@ aside.traj-col.profile-mode .scroll{flex:1;min-height:0;overflow:auto;margin:0 -
 /* ── Clickable inline references inside messages (@mention / #channel) ──────────── */
 .mbody .ref-at{cursor:pointer}
 .mbody .ref-at:hover{text-decoration:underline;text-underline-offset:2px}
-.mbody .ref-chan{color:var(--ink);font-weight:600;background:var(--tint-blue);border-radius:4px;padding:0 3px;cursor:pointer}
-.mbody .ref-chan:hover{background:var(--tint-blue-strong)}
+.mbody .ref-at,.mbody .ref-chan,.mbody .ref-thread,.mbody .ref-task{color:var(--ink-2);font-weight:600;border-radius:4px;padding:0 3px;text-decoration:none;cursor:pointer}
+.mbody .ref-agent{background:var(--mention)}.mbody .ref-human{background:var(--human-mention)}
+.mbody .ref-human:hover{background:var(--human-mention-strong)}
+.mbody .ref-chan{background:var(--channel-mention)}
+.mbody .ref-chan:hover{background:var(--channel-mention-strong)}
+.mbody .ref-thread{background:var(--thread-mention)}
+.mbody .ref-thread:hover{background:var(--thread-mention-strong)}
+.mbody .ref-task{background:var(--task-mention)}
+.mbody .ref-task:hover{background:var(--task-mention-strong)}
 
 /* ── Message hover floating toolbar (actions float in top-right corner) ──────────── */
 .msg-toolbar{position:absolute;top:-12px;right:8px;display:flex;gap:1px;background:var(--surface);border:1px solid var(--hair-strong);border-radius:8px;box-shadow:0 2px 10px var(--shadow-2);padding:2px;opacity:0;pointer-events:none;transition:opacity .1s;z-index:5}

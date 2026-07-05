@@ -506,7 +506,7 @@ export function Saved() {
 }
 
 // Invite members (join-links): owner/admin generates invite links (configurable role/max-uses) → share → recipient registers or logs in to join.
-async function copyText(text: string): Promise<boolean> {
+export async function copyText(text: string): Promise<boolean> {
   if (navigator.clipboard && window.isSecureContext) {
     try {
       await navigator.clipboard.writeText(text);
