@@ -61,7 +61,7 @@ export async function handleAgents(ctx: ServerCtx): Promise<boolean> {
     // Title/role changed → push the current profile to the daemon so it syncs the workspace MEMORY.md.
     if (patch.displayName !== undefined || patch.description !== undefined) {
       const a = (await db.select().from(schema.agents).where(and(eq(schema.agents.id, am[1]!), eq(schema.agents.serverId, serverId))))[0];
-      if (a) syncAgentProfile(serverId, am[1]!, a.displayName, a.description);
+      if (a) await syncAgentProfile(serverId, am[1]!, a.displayName, a.description);
     }
     return (sendJson(res, 200, { ok: true }), true);
   }

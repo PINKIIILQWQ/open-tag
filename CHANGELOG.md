@@ -9,6 +9,19 @@ from `main`; see commit history for fine-grained server/web changes.
 
 ## [Unreleased]
 
+## [0.8.3] — 2026-07-06
+
+### Fixed
+
+- Daemon: a missing `claude` binary no longer crashes the whole daemon; spawn
+  errors are surfaced as offline/error activity for that agent while the daemon
+  keeps serving other agents.
+- Server-side runtime reliability: clean machine disconnects immediately mark
+  hosted agents offline, failed wake sends close any active reply preview with an
+  error, and bound-machine starts require the selected machine's live websocket
+  while legacy unbound agents keep the broadcast fallback for start, deliver, and
+  lifecycle control messages.
+
 ## [0.8.2] — 2026-07-06
 
 ### Added
@@ -175,7 +188,8 @@ from `main`; see commit history for fine-grained server/web changes.
   on any machine with Node ≥ 20, without cloning the repository.
 - Supported runtimes at time of release: **Claude Code** and **Codex**.
 
-[Unreleased]: https://github.com/fancyboi999/open-tag/compare/v0.8.2...HEAD
+[Unreleased]: https://github.com/fancyboi999/open-tag/compare/v0.8.3...HEAD
+[0.8.3]: https://github.com/fancyboi999/open-tag/compare/v0.8.2...v0.8.3
 [0.8.2]: https://github.com/fancyboi999/open-tag/compare/v0.8.1...v0.8.2
 [0.8.1]: https://github.com/fancyboi999/open-tag/compare/v0.8.0...v0.8.1
 [0.8.0]: https://github.com/fancyboi999/open-tag/compare/v0.7.1...v0.8.0

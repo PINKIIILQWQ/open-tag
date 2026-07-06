@@ -58,6 +58,12 @@ export const claudeRuntime: Runtime = {
 
     const proc = spawn("claude", args, { cwd: opts.cwd, stdio: ["pipe", "pipe", "pipe"], env: opts.env });
     let sessionId = opts.sessionId ?? null;
+    let finished = false;
+    const finish = (code: number | null) => {
+      if (finished) return;
+      finished = true;
+      cb.onExit(code);
+    };
     const writeUser = (text: string) => {
       const m = { type: "user", message: { role: "user", content: [{ type: "text", text }] }, ...(sessionId ? { session_id: sessionId } : {}) };
       try { proc.stdin?.write(JSON.stringify(m) + "\n"); } catch { /* */ }
@@ -70,7 +76,12 @@ export const claudeRuntime: Runtime = {
       for (const ln of lines) { if (ln.trim()) parseLine(ln); }
     });
     proc.stderr?.on("data", (c: Buffer) => { const t = c.toString().trim(); if (t) cb.log.debug("claude stderr", { t: t.slice(0, 300) }); });
-    proc.on("exit", (code) => cb.onExit(code));
+    proc.on("error", (e) => {
+      cb.log.error("claude spawn failed", { detail: String((e as any)?.message ?? e) });
+      cb.onActivity("offline", "claude not found");
+      finish(1);
+    });
+    proc.on("exit", (code) => finish(code));
 
     function parseLine(line: string) {
       let e: any; try { e = JSON.parse(line); } catch { return; }
